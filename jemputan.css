@@ -1,0 +1,190 @@
+/* Planner Nikah A–Z — Jemputan Digital · Created by Hizami Radzi */
+
+/* ---------------- TEMA ---------------- */
+.t-lavender{
+  --bg:#EFE7F2; --paper:#FFFFFF; --ink:#4A3F4E; --muted:#8C8090; --accent:#8E6C9E; --accent2:#C9A7CF; --gold:#B99AC0;
+  --line:#E6DAEA; --soft:#F7F1F9; --btn:#8E6C9E; --btn-ink:#FFFFFF; --leaf:#9CB29A;
+  --f-script:"Great Vibes", Georgia, serif; --f-title:"Cormorant Garamond", Georgia, serif; --f-body:"Cormorant Garamond", Georgia, serif;
+  --name-size:60px;
+}
+.t-ivory{
+  --bg:#EAE3D7; --paper:#FBF8F2; --ink:#3B342C; --muted:#8A7F70; --accent:#A8844F; --accent2:#D8C3A0; --gold:#B8935A;
+  --line:#E7DCC8; --soft:#F4EEE3; --btn:#A8844F; --btn-ink:#FFFFFF; --leaf:#B9A57F;
+  --f-script:"Pinyon Script", Georgia, serif; --f-title:"Cinzel", Georgia, serif; --f-body:"Cormorant Garamond", Georgia, serif;
+  --name-size:54px;
+}
+.t-gerbang{
+  --bg:#E4D9C6; --paper:#F7F1E6; --ink:#3F3527; --muted:#8B7D68; --accent:#9C7438; --accent2:#D6BF93; --gold:#B08A4A;
+  --line:#E3D5BB; --soft:#F1E8D8; --btn:#9C7438; --btn-ink:#FFFFFF; --leaf:#A9A27F;
+  --f-script:"Alex Brush", Georgia, serif; --f-title:"Playfair Display", Georgia, serif; --f-body:"Cormorant Garamond", Georgia, serif;
+  --name-size:56px;
+}
+.t-zamrud{
+  --bg:#082A22; --paper:#0E3B30; --ink:#F3EAD3; --muted:#BFD0C4; --accent:#D8B45E; --accent2:#8FB09E; --gold:#D8B45E;
+  --line:#2E5E50; --soft:#12483B; --btn:#D8B45E; --btn-ink:#0E3B30; --leaf:#D8B45E;
+  --f-script:"Great Vibes", Georgia, serif; --f-title:"Cinzel", Georgia, serif; --f-body:"Cormorant Garamond", Georgia, serif;
+  --name-size:56px;
+}
+
+/* ---------------- ASAS ---------------- */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:18px; line-height:1.55; -webkit-font-smoothing:antialiased; font-variant-numeric:lining-nums}
+[hidden]{display:none !important}
+button,input,select,textarea{font:inherit; color:inherit}
+a{color:inherit}
+.arabic{font-family:"Amiri", "Traditional Arabic", serif; direction:rtl}
+.muted{color:var(--muted)}
+
+.loading{min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--muted); font-family:Georgia, serif}
+.spin{width:30px; height:30px; border-radius:50%; border:3px solid var(--line); border-top-color:var(--accent); animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.demo-note{position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:50; background:rgba(0,0,0,.72); color:#fff; font:600 12px/1.2 system-ui,sans-serif; padding:7px 12px; border-radius:99px; letter-spacing:.3px}
+
+.inv{max-width:460px; margin:0 auto; background:var(--paper); min-height:100dvh; position:relative; overflow:hidden}
+@media (min-width:520px){ .inv{box-shadow:0 0 60px rgba(0,0,0,.12)} body{padding:0} }
+
+/* ---------------- MUKA DEPAN ---------------- */
+.cover{min-height:min(100dvh, 860px); position:relative; display:flex; align-items:center; justify-content:center; text-align:center; padding:90px 30px; overflow:hidden}
+.cover-inner{position:relative; z-index:2; animation:rise 1.2s ease both}
+@keyframes rise{from{opacity:0; transform:translateY(14px)}to{opacity:1; transform:none}}
+.bism-cover{font-size:26px; color:var(--accent); margin:0 0 18px}
+.eyebrow{font-family:var(--f-title); text-transform:uppercase; letter-spacing:5px; font-size:13px; color:var(--muted); margin:0 0 6px}
+.names{font-family:var(--f-script); font-weight:400; font-size:var(--name-size); line-height:1.05; color:var(--accent); margin:6px 0 10px}
+.names span{display:block}
+.names .amp{font-size:.55em; color:var(--gold); margin:2px 0}
+.names.small{font-size:38px; margin:8px 0}
+.cover-date{font-family:var(--f-title); letter-spacing:2px; font-size:15px; text-transform:uppercase; margin:10px 0 2px}
+.cover-place{font-size:16px; color:var(--muted); margin:0 0 18px; font-style:italic}
+.kepada{font-size:14px; color:var(--muted); margin:0 0 20px; line-height:1.4}
+.kepada b{font-size:18px; color:var(--ink)}
+
+.orn{position:absolute; pointer-events:none; z-index:1}
+.orn svg{display:block; width:100%; height:100%}
+.orn-cover-top{top:0; left:0; right:0; height:190px}
+.orn-cover-bottom{bottom:0; left:0; right:0; height:190px}
+.orn-end{position:relative; height:90px; margin:0 auto 6px; width:100%}
+
+.divider{height:22px; margin:12px auto; width:220px; background-repeat:no-repeat; background-position:center}
+.divider.sm{width:150px}
+
+/* ---------------- BUTANG ---------------- */
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1.5px solid var(--btn); background:var(--btn); color:var(--btn-ink);
+  padding:12px 22px; border-radius:99px; font-family:var(--f-title); font-size:15px; letter-spacing:1px; text-decoration:none; cursor:pointer; transition:transform .15s, opacity .15s}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:transparent; color:var(--accent); border-color:var(--accent2)}
+.btn.wide{width:100%; margin-top:10px}
+.btn[aria-disabled="true"]{opacity:.4; pointer-events:none}
+#openBtn{margin-top:6px; box-shadow:0 8px 24px color-mix(in srgb, var(--btn) 35%, transparent); animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(1.04)}}
+.btnrow{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:14px}
+.btnrow.col{flex-direction:column; align-items:stretch}
+
+/* ---------------- SEKSYEN ---------------- */
+.content{display:none}
+.opened .content{display:block}
+.s{padding:46px 28px; text-align:center; position:relative}
+.s + .s{border-top:1px solid var(--line)}
+.st{font-family:var(--f-title); font-weight:600; text-transform:uppercase; letter-spacing:4px; font-size:15px; color:var(--accent); margin:0 0 20px}
+.st::after{content:""; display:block; width:46px; height:1px; background:var(--accent2); margin:12px auto 0}
+.frame{border:1px solid var(--accent2); outline:1px solid var(--accent2); outline-offset:5px; border-radius:6px; padding:28px 20px; margin:6px}
+.bism{font-size:30px; color:var(--accent); margin:0 0 6px}
+.salam{font-style:italic; margin:0; color:var(--muted)}
+.tuan{font-weight:700; font-size:19px; margin:14px 0 6px; font-family:var(--f-title); letter-spacing:.5px}
+.ayat{margin:0 0 16px}
+.full-name{font-family:var(--f-script); font-size:36px; color:var(--accent); line-height:1.15; margin:6px 0}
+.amp2{font-style:italic; color:var(--muted); margin:0}
+
+.datecard{display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; margin:6px auto 8px; max-width:330px}
+.dc-side{font-family:var(--f-title); letter-spacing:3px; font-size:14px; border-top:1px solid var(--accent2); border-bottom:1px solid var(--accent2); padding:8px 0}
+.dc-mid b{display:block; font-family:var(--f-title); font-size:58px; line-height:1; color:var(--accent); font-weight:500}
+.dc-mid span{font-family:var(--f-title); letter-spacing:3px; font-size:13px}
+.time{font-family:var(--f-title); letter-spacing:1.5px; margin:10px 0 18px}
+.countdown{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:0 auto 20px; max-width:330px}
+.countdown div{background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:10px 0}
+.countdown b{display:block; font-family:var(--f-title); font-size:26px; color:var(--accent); line-height:1.1}
+.countdown span{font-size:12px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; font-family:system-ui,sans-serif}
+
+.tl{list-style:none; margin:0 auto; padding:0; max-width:340px; text-align:left}
+.tl li{display:grid; grid-template-columns:96px 1fr; gap:14px; padding:10px 0; border-bottom:1px dashed var(--line)}
+.tl li:last-child{border-bottom:0}
+.tl .tm{font-family:var(--f-title); color:var(--accent); font-size:15px; letter-spacing:.5px; text-align:right}
+.tl .ac{font-size:17px}
+
+.place{font-family:var(--f-title); font-size:20px; margin:0 0 4px; letter-spacing:.5px}
+.addr{margin:0; color:var(--muted)}
+.dress{margin:18px 0 0; font-style:italic}
+
+/* ---------------- RSVP ---------------- */
+.rsvp{text-align:left; max-width:360px; margin:0 auto; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:15px}
+.rsvp label{display:block; font-weight:600; margin:0 0 12px; color:var(--ink)}
+.rsvp label small{font-weight:400; color:var(--muted)}
+.rsvp input,.rsvp select,.rsvp textarea{display:block; width:100%; margin-top:6px; padding:12px 14px; border-radius:12px; border:1.5px solid var(--line); background:var(--soft); outline:none; font-size:16px}
+.rsvp input:focus,.rsvp select:focus,.rsvp textarea:focus{border-color:var(--accent)}
+.choice{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:4px 0 14px}
+.opt{border:1.5px solid var(--line); background:var(--soft); border-radius:12px; padding:12px 8px; font-weight:600; cursor:pointer; font-size:14px}
+.opt.on{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 16%, var(--paper)); color:var(--ink)}
+.pax{display:flex; align-items:center; justify-content:space-between; margin:0 0 12px; font-weight:600}
+.stepper{display:flex; align-items:center; gap:14px}
+.stepper button{width:40px; height:40px; border-radius:50%; border:1.5px solid var(--accent2); background:var(--soft); font-size:22px; line-height:1; cursor:pointer}
+.stepper b{min-width:22px; text-align:center; font-size:20px}
+.hp{position:absolute; left:-9999px; width:1px; height:1px; opacity:0}
+.err{color:#C0392B; font-weight:600; min-height:20px; margin:10px 0 0; text-align:center}
+.t-zamrud .err{color:#FFB4A8}
+.thanks .big{font-family:var(--f-script); font-size:44px; color:var(--accent); margin:0}
+.closed{font-style:italic; color:var(--muted)}
+
+/* ---------------- UCAPAN ---------------- */
+.wishes{display:flex; flex-direction:column; gap:10px; text-align:left; max-width:380px; margin:0 auto}
+.wish{background:var(--soft); border:1px solid var(--line); border-radius:14px; padding:12px 14px}
+.wish p{margin:0 0 6px; font-size:17px}
+.wish b{font-family:var(--f-title); font-size:13px; letter-spacing:.5px; color:var(--accent)}
+#moreWishes{margin-top:12px}
+
+.doa{font-size:23px; line-height:1.9; color:var(--accent); margin:0 0 10px}
+.doa-m{font-style:italic; margin:0}
+
+.bank{background:var(--soft); border:1px solid var(--line); border-radius:16px; padding:18px; max-width:340px; margin:14px auto 0}
+.bank p{margin:2px 0}
+.bank .acc{font-family:var(--f-title); font-size:24px; letter-spacing:2px; color:var(--accent); margin:6px 0}
+.bank .btn{margin-top:10px}
+
+.end{padding-bottom:120px}
+.end p{margin:6px 0}
+.credit{font-family:system-ui,sans-serif; font-size:11px; color:var(--muted); letter-spacing:.3px; margin-top:26px !important; opacity:.8}
+
+/* ---------------- DOK BAWAH ---------------- */
+.dock{position:fixed; left:0; right:0; margin:0 auto; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:40; display:grid; grid-template-columns:repeat(4,1fr);
+  width:min(420px, calc(100% - 24px)); background:color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line); border-radius:22px; box-shadow:0 10px 30px rgba(0,0,0,.14); padding:6px; animation:rise .6s ease both}
+.dock button{border:0; background:none; display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 0; border-radius:16px; font-size:18px; cursor:pointer; color:var(--ink)}
+.dock span{font:600 11px system-ui,sans-serif; letter-spacing:.3px}
+.dock .hl{background:var(--btn); color:var(--btn-ink)}
+
+dialog.sheet{border:1px solid var(--line); border-radius:22px; background:var(--paper); color:var(--ink); padding:22px; width:min(380px, calc(100% - 30px)); text-align:center}
+dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
+.toast{position:fixed; left:50%; bottom:96px; transform:translateX(-50%) translateY(20px); background:rgba(0,0,0,.8); color:#fff; font:600 13px system-ui,sans-serif;
+  padding:10px 16px; border-radius:99px; opacity:0; transition:.25s; z-index:60; pointer-events:none}
+.toast.show{opacity:1; transform:translateX(-50%)}
+
+/* ---------------- REVEAL ---------------- */
+.rv{opacity:0; transform:translateY(18px); transition:opacity .8s ease, transform .8s ease}
+.rv.in{opacity:1; transform:none}
+@media (prefers-reduced-motion: reduce){ .rv{opacity:1; transform:none} #openBtn{animation:none} }
+
+/* ---------------- KHUSUS TEMA ---------------- */
+.t-ivory .inv{background:
+  radial-gradient(120% 60% at 10% 0%, rgba(255,255,255,.9), transparent 60%),
+  radial-gradient(80% 50% at 100% 30%, rgba(216,195,160,.18), transparent 70%),
+  radial-gradient(90% 60% at 0% 80%, rgba(216,195,160,.14), transparent 70%), var(--paper)}
+.t-ivory .cover{outline:1px solid var(--accent2); outline-offset:-18px}
+.t-ivory .cover::before{content:""; position:absolute; inset:24px; border:1px solid var(--accent2); pointer-events:none}
+.t-gerbang .cover{padding:130px 44px 150px}
+.t-gerbang .orn-cover-top{top:18px; bottom:18px; left:14px; right:14px; height:auto}
+.t-gerbang .orn-cover-bottom{height:130px; bottom:0}
+.t-zamrud .inv{background-color:var(--paper)}
+.t-zamrud .frame{background:rgba(0,0,0,.12)}
+.t-zamrud .opt.on{background:rgba(216,180,94,.18)}
+.t-zamrud .rsvp input,.t-zamrud .rsvp select,.t-zamrud .rsvp textarea{background:rgba(0,0,0,.2); color:var(--ink)}
+.t-zamrud .rsvp input::placeholder,.t-zamrud .rsvp textarea::placeholder{color:#8FA99C}
+.t-lavender .names{text-shadow:0 1px 0 rgba(255,255,255,.6)}

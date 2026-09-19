@@ -1,6 +1,9 @@
 # 💍 Dashboard Planner Nikah A–Z
 
-Dashboard web untuk pembeli template **Planner Nikah A–Z** (Google Sheets). Buka di **telefon, tablet dan laptop**, dan data dikemas kini terus dari Google Sheet anda.
+Dashboard web + **Jemputan Digital & RSVP** untuk pembeli template **Planner Nikah A–Z** (Google Sheets). Buka di **telefon, tablet dan laptop**, dan data dikemas kini terus dari Google Sheet anda.
+
+- `/` : dashboard peribadi (perlu PIN)
+- `/jemputan` : kad jemputan digital + RSVP untuk dikongsi di WhatsApp (4 reka bentuk)
 
 **Created by Hizami Radzi**
 
@@ -23,6 +26,20 @@ Semasa deploy, Vercel akan minta satu nilai sahaja: **APPS_SCRIPT_URL**.
 
 Panduan penuh bergambar ada dalam PDF **Cara Sambung Dashboard** yang disertakan bersama template.
 
+## Jemputan Digital & RSVP
+
+1. Isi tab **Jemputan Digital** dalam Google Sheet (kotak kuning), termasuk pilihan reka bentuk:
+   **Lavender Kasih**, **Ivory Emas**, **Gerbang Nur** atau **Zamrud Songket**.
+2. Kongsi link `https://nama-projek-anda.vercel.app/jemputan` kepada tetamu.
+3. Jawapan RSVP tetamu masuk terus ke tab **RSVP Online**, dan dipaparkan dalam dashboard (tab Tetamu).
+
+Tip:
+- `?reka=lavender|ivory|gerbang|zamrud` : pratonton reka bentuk lain.
+- `?untuk=Keluarga%20Encik%20Ali` : papar nama tetamu di muka depan.
+
+Sudah deploy versi lama? Tampal `Code.gs` baharu dalam Apps Script, jalankan `setupJemputan` sekali, kemudian
+**Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy** (URL kekal sama).
+
 ## Keselamatan
 
 - Data kekal dalam Google Sheet **anda**. Dashboard ini tidak menyimpan data di mana-mana server.
@@ -31,14 +48,18 @@ Panduan penuh bergambar ada dalam PDF **Cara Sambung Dashboard** yang disertakan
 - Nombor telefon tetamu **tidak** dihantar ke dashboard.
 - Skrip hanya boleh membaca fail Google Sheet itu sahaja (`@OnlyCurrentDoc`).
 - Halaman tidak diindeks oleh Google (`noindex`).
+- Jemputan hanya memaparkan butiran majlis. Bajet dan senarai tetamu tidak didedahkan.
+- RSVP dilindungi had kekerapan, perangkap bot dan penapis formula.
 
 ## Struktur
 
 | Fail | Fungsi |
 |---|---|
 | `index.html`, `app.js`, `style.css` | Aplikasi dashboard (tanpa library luar) |
-| `api/data.js` | Proksi selamat Vercel → Apps Script |
+| `api/data.js` | Proksi selamat Vercel → Apps Script (dashboard) |
+| `jemputan.html`, `jemputan.js`, `jemputan.css` | Kad jemputan digital (4 reka bentuk) |
+| `api/jemputan.js`, `api/rsvp.js`, `api/page.js` | Baca butiran jemputan, hantar RSVP, papar halaman |
 | `apps-script/Code.gs` | Salinan rujukan skrip dalam template Google Sheet |
 | `vercel.json` | Header keselamatan |
 
-Jika `APPS_SCRIPT_URL` belum diisi, dashboard dibuka dalam **Mod Demo** dengan data contoh.
+Jika `APPS_SCRIPT_URL` belum diisi, dashboard dan jemputan dibuka dalam **Mod Demo** dengan data contoh.

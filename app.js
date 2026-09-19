@@ -187,7 +187,8 @@
 
     return {
       info: info, bajet: bajet, T: T, cats: catList, pihak: pihak, bayaran: bayaran, unpaid: unpaid, vendor: d.vendor || [],
-      tetamu: tetamu, chk: chk, urusan: urusan, hantaran: hantaran, tentatif: d.tentatif || [], ajk: d.ajk || [],
+      tetamu: tetamu, rsvpOnline: (d.rsvpOnline || []).map(function (x) { return { masa: x.masa, nama: x.nama, hadir: x.hadir === 'Hadir' ? 'Hadir' : 'Tidak Hadir', pax: n(x.pax), slot: x.slot, ucapan: x.ucapan }; }),
+      chk: chk, urusan: urusan, hantaran: hantaran, tentatif: d.tentatif || [], ajk: d.ajk || [],
       salam: d.salam || { jumlah: 0, bil: 0, belumTerimaKasih: 0 },
       sim: { sumber: n(sim.sumberDana), bulanan: bulanan, terkumpul: terkumpul }
     };
@@ -283,7 +284,7 @@
       kpi('Anggaran bajet', RM(M.T.anggaran), i.bajetSasaran ? 'Sasaran ' + RM(i.bajetSasaran) + ' · ' + pc(M.T.guna, i.bajetSasaran) : '', M.T.guna > n(i.bajetSasaran) && n(i.bajetSasaran) > 0 ? 'red' : 'rose') +
       kpi('Sudah dibayar', RM(M.T.dibayar), pc(M.T.dibayar, M.T.dibayar + M.T.baki) + ' daripada kos', 'sage') +
       kpi('Baki perlu bayar', RM(M.T.baki), M.unpaid.length + ' bayaran vendor belum selesai', 'gold') +
-      kpi('Tetamu sah hadir', hadirPax.toLocaleString('en-MY') + '<small class="muted" style="font-size:14px"> / ' + jemputPax.toLocaleString('en-MY') + '</small>', 'pax · ' + cnt(M.tetamu, function (x) { return x.rsvp === 'Belum Jawab'; }) + ' keluarga belum jawab') +
+      kpi('Tetamu sah hadir', hadirPax.toLocaleString('en-MY') + '<small class="muted" style="font-size:14px"> / ' + jemputPax.toLocaleString('en-MY') + '</small>', 'pax · ' + cnt(M.tetamu, function (x) { return x.rsvp === 'Belum Jawab'; }) + ' keluarga belum jawab' + (M.rsvpOnline.length ? ' · RSVP online ' + sum(M.rsvpOnline, function (x) { return x.hadir === 'Hadir' ? x.pax : 0; }) + ' pax' : '')) +
       '</div>';
 
     var next = M.unpaid.slice(0, 4).map(function (x) {
@@ -436,7 +437,17 @@
       return '<div class="row"><div class="main-col"><div class="t">' + esc(x.nama) + '</div><div class="s">' + esc(x.pihak) + ' · ' + esc(x.kumpulan) + ' · ' + x.pax + ' pax' +
         (x.meja ? ' · Meja ' + esc(x.meja) : '') + (x.kad ? '' : ' · <b style="color:var(--red)">kad belum dihantar</b>') + '</div></div><div class="r"><span class="pill ' + pill + '">' + esc(x.rsvp) + '</span></div></div>';
     }).join('') || empty('Tiada tetamu dalam senarai ini.');
-    return k + '<div style="margin-top:12px">' + rsvp + '</div><div class="grid gm2" style="margin-top:12px">' + groupBars('pihak', 'Ikut pihak') + groupBars('kumpulan', 'Ikut kumpulan') + '</div>' +
+    var R = M.rsvpOnline, rH = R.filter(function (x) { return x.hadir === 'Hadir'; });
+    var rCard = '<div class="card" style="margin-top:12px"><h2>💌 RSVP Online <small>dari jemputan digital</small></h2>' +
+      '<div class="grid g4">' + kpi('Jawapan', String(R.length), 'keluarga', 'rose') + kpi('Hadir', sum(rH, function (x) { return x.pax; }) + ' pax', rH.length + ' keluarga', 'sage') +
+      kpi('Tidak hadir', String(R.length - rH.length), 'keluarga', '') + kpi('Ucapan', String(cnt(R, function (x) { return x.ucapan; })), 'doa & ucapan', 'gold') + '</div>' +
+      (R.length ? '<div class="list" style="margin-top:10px">' + R.slice().reverse().slice(0, 12).map(function (x) {
+        return '<div class="row"><div class="main-col"><div class="t">' + esc(x.nama) + '</div><div class="s">' + (x.hadir === 'Hadir' ? x.pax + ' pax' : 'Tidak hadir') +
+          (x.slot ? ' · ' + esc(x.slot) : '') + (x.masa ? ' · ' + esc(String(x.masa).slice(0, 16)) : '') + (x.ucapan ? '<br>“' + esc(x.ucapan) + '”' : '') + '</div></div>' +
+          '<div class="r"><span class="pill ' + (x.hadir === 'Hadir' ? 'ok' : 'bad') + '">' + x.hadir + '</span></div></div>';
+      }).join('') + '</div>' + (R.length > 12 ? '<p class="muted small">Senarai penuh di tab "RSVP Online" dalam Google Sheet.</p>' : '')
+        : '<p class="empty">Belum ada jawapan. Kongsi link jemputan anda: <b>' + esc(location.origin) + '/jemputan</b></p>') + '</div>';
+    return k + rCard + '<div style="margin-top:12px">' + rsvp + '</div><div class="grid gm2" style="margin-top:12px">' + groupBars('pihak', 'Ikut pihak') + groupBars('kumpulan', 'Ikut kumpulan') + '</div>' +
       '<div class="card" style="margin-top:12px"><h2>Senarai tetamu <small>' + list.length + ' keluarga</small></h2>' +
       seg('tetamu', [['Belum Jawab', 'Belum jawab'], ['Hadir', 'Hadir'], ['Tidak Hadir', 'Tidak hadir'], ['Semua', 'Semua']], F.tetamu) +
       '<input class="search" id="q" type="search" placeholder="Cari nama…" value="' + esc(F.q) + '"><div class="list">' + rows + '</div></div>';
@@ -666,7 +677,10 @@
       var d = new Date(t.getFullYear(), t.getMonth() + m, 1);
       bulanan.push({ bulan: iso(d), sasaran: 3500, lelaki: '', perempuan: '', jumlah: m <= 0 ? [3000, 3600, 3500, 4000, 2800, 3700, 3500, 3900, 1500][m + 8] : '' });
     }
-    return { info: info, bajet: bajet, bayaran: bayaran, vendor: vendor, tetamu: tetamu, checklist: checklist, urusan: urusan,
+    var rsvpOnline = [['Keluarga Encik Ali', 'Hadir', 4, 'Selamat pengantin baru! Semoga bahagia hingga ke Jannah.'], ['Nurul & suami', 'Hadir', 2, 'Barakallahu lakuma wa baraka alaikuma.'],
+      ['Cikgu Rahman', 'Tidak Hadir', 0, 'Maaf tidak dapat hadir. Semoga majlis berjalan lancar.'], ['Geng Pejabat', 'Hadir', 5, ''], ['Kak Long Mira', 'Hadir', 3, 'Tahniah adik!']]
+      .map(function (x, k) { return { masa: add(-6 + k) + ' 10:0' + k, nama: x[0], hadir: x[1], pax: x[2], slot: '', ucapan: x[3] }; });
+    return { info: info, bajet: bajet, bayaran: bayaran, vendor: vendor, tetamu: tetamu, rsvpOnline: rsvpOnline, checklist: checklist, urusan: urusan,
       hantaran: hantaran, tentatif: tentatif, ajk: ajk, salam: { jumlah: 0, bil: 0, belumTerimaKasih: 0 },
       simpanan: { sumberDana: 8000, bulanan: bulanan } };
   }
@@ -692,6 +706,12 @@
   });
   $('#howBtn').addEventListener('click', function () { $('#help').showModal(); });
   $('#helpBtn').addEventListener('click', function () { $('#menu').close(); $('#help').showModal(); });
+  $('#inviteBtn').addEventListener('click', function () { $('#menu').close(); window.open('/jemputan', '_blank', 'noopener'); });
+  $('#inviteCopy').addEventListener('click', function () {
+    var link = location.origin + '/jemputan';
+    $('#menu').close();
+    (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { alert('Link jemputan disalin: ' + link); }, function () { prompt('Salin link jemputan:', link); });
+  });
   var deferredInstall = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredInstall = e; });
   $('#installBtn').addEventListener('click', function () {

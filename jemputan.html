@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Jemputan Walimatul Urus</title>
+<meta property="og:title" content="💌 Jemputan Walimatul Urus">
+<meta property="og:description" content="Tekan untuk buka jemputan, lokasi & RSVP.">
+<meta property="og:image" content="/og-jemputan.png">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#FBF8F2">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="fontLink" rel="stylesheet" href="">
+<link rel="stylesheet" href="/jemputan.css">
+</head>
+<body class="t-ivory">
+
+<div id="loading" class="loading"><div class="spin"></div><p>Membuka jemputan…</p></div>
+<div id="demoNote" class="demo-note" hidden>Pratonton contoh · <span id="demoTheme"></span></div>
+
+<main id="inv" class="inv" hidden>
+
+  <!-- ================= MUKA DEPAN ================= -->
+  <section class="cover" id="cover">
+    <div class="orn orn-cover-top" aria-hidden="true"></div>
+    <div class="orn orn-cover-bottom" aria-hidden="true"></div>
+    <div class="cover-inner">
+      <p class="bism-cover arabic" id="bismCover">بِسْمِ ٱللَّٰهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</p>
+      <p class="eyebrow" id="cMajlis">Walimatul Urus</p>
+      <h1 class="names">
+        <span id="cName1">Aisyah</span>
+        <span class="amp">&amp;</span>
+        <span id="cName2">Ahmad</span>
+      </h1>
+      <div class="divider" aria-hidden="true"></div>
+      <p class="cover-date" id="cDate">Sabtu · 19 September 2027</p>
+      <p class="cover-place" id="cPlace"></p>
+      <p class="kepada" id="kepada" hidden>Kepada<br><b id="kepadaNama"></b></p>
+      <button class="btn" id="openBtn">💌 Buka Jemputan</button>
+    </div>
+  </section>
+
+  <div id="content" class="content">
+
+    <!-- ================= BISMILLAH & JEMPUTAN ================= -->
+    <section class="s">
+      <div class="frame">
+        <p class="arabic bism">بِسْمِ ٱللَّٰهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</p>
+        <p class="salam">Assalamualaikum w.b.t.</p>
+        <div class="divider sm" aria-hidden="true"></div>
+        <p class="tuan" id="tuanRumah"></p>
+        <p class="ayat" id="ayat"></p>
+        <p class="full-name" id="full1"></p>
+        <p class="amp2">dengan</p>
+        <p class="full-name" id="full2"></p>
+      </div>
+    </section>
+
+    <!-- ================= TARIKH & MASA ================= -->
+    <section class="s">
+      <h2 class="st">Tarikh &amp; Masa</h2>
+      <div class="datecard">
+        <div class="dc-side" id="dDay">SABTU</div>
+        <div class="dc-mid"><b id="dNum">19</b><span id="dMonth">SEPTEMBER</span></div>
+        <div class="dc-side" id="dYear">2027</div>
+      </div>
+      <p class="time" id="dTime">11:00 AM – 4:00 PM</p>
+      <div class="countdown" id="countdown">
+        <div><b id="cdD">0</b><span>Hari</span></div>
+        <div><b id="cdH">0</b><span>Jam</span></div>
+        <div><b id="cdM">0</b><span>Minit</span></div>
+        <div><b id="cdS">0</b><span>Saat</span></div>
+      </div>
+      <button class="btn ghost" data-open="calDlg">📅 Simpan dalam kalendar</button>
+    </section>
+
+    <!-- ================= TENTATIF ================= -->
+    <section class="s" id="secTentatif" hidden>
+      <h2 class="st">Aturcara Majlis</h2>
+      <ol class="tl" id="tentatif"></ol>
+    </section>
+
+    <!-- ================= LOKASI ================= -->
+    <section class="s" id="secLokasi">
+      <h2 class="st">Lokasi</h2>
+      <p class="place" id="lTempat"></p>
+      <p class="addr" id="lAlamat"></p>
+      <div class="btnrow">
+        <a class="btn" id="mapsBtn" target="_blank" rel="noopener">📍 Google Maps</a>
+        <a class="btn" id="wazeBtn" target="_blank" rel="noopener">🚗 Waze</a>
+      </div>
+      <p class="dress" id="kodPakaian" hidden></p>
+    </section>
+
+    <!-- ================= RSVP ================= -->
+    <section class="s" id="secRsvp">
+      <h2 class="st">RSVP</h2>
+      <p class="muted" id="rsvpNote"></p>
+
+      <form id="rsvpForm" class="rsvp" autocomplete="on" novalidate>
+        <label>Nama<input id="fNama" name="name" maxlength="60" required placeholder="cth. Keluarga Encik Ali"></label>
+        <label>No. telefon <small>(pilihan)</small><input id="fTel" name="tel" type="tel" inputmode="tel" maxlength="16" placeholder="cth. 0123456789"></label>
+        <div class="choice" role="radiogroup" aria-label="Kehadiran">
+          <button type="button" class="opt" data-hadir="Hadir">✅ Hadir</button>
+          <button type="button" class="opt" data-hadir="Tidak Hadir">🙏 Tidak dapat hadir</button>
+        </div>
+        <div id="hadirOnly" hidden>
+          <div class="pax">
+            <span>Bilangan tetamu</span>
+            <div class="stepper"><button type="button" id="paxMinus" aria-label="Kurang">−</button><b id="paxVal">1</b><button type="button" id="paxPlus" aria-label="Tambah">+</button></div>
+          </div>
+          <label id="slotWrap" hidden>Slot masa<select id="fSlot"></select></label>
+        </div>
+        <label>Ucapan &amp; doa <small>(pilihan)</small><textarea id="fUcapan" maxlength="300" rows="3" placeholder="Selamat pengantin baru…"></textarea></label>
+        <input type="text" id="fLaman" name="laman" tabindex="-1" autocomplete="off" class="hp" aria-hidden="true">
+        <button class="btn wide" id="rsvpBtn" type="submit">Hantar RSVP</button>
+        <p class="err" id="rsvpErr" role="alert"></p>
+      </form>
+
+      <div class="thanks" id="thanks" hidden>
+        <p class="big">Terima kasih! 🤍</p>
+        <p id="thanksMsg"></p>
+        <button class="btn ghost" id="againBtn" type="button">Hantar jawapan lain</button>
+      </div>
+      <p class="closed" id="rsvpClosed" hidden>RSVP telah ditutup. Terima kasih atas perhatian anda.</p>
+    </section>
+
+    <!-- ================= UCAPAN ================= -->
+    <section class="s" id="secUcapan" hidden>
+      <h2 class="st">Ucapan Tetamu</h2>
+      <div class="wishes" id="wishes"></div>
+      <button class="btn ghost" id="moreWishes" hidden>Lihat lagi</button>
+    </section>
+
+    <!-- ================= DOA ================= -->
+    <section class="s">
+      <div class="frame">
+        <h2 class="st">Doa Pengantin</h2>
+        <p class="arabic doa" id="doaArab"></p>
+        <p class="doa-m" id="doaMaksud"></p>
+      </div>
+    </section>
+
+    <!-- ================= SALAM KAUT ================= -->
+    <section class="s" id="secSalam" hidden>
+      <h2 class="st">Salam Kaut</h2>
+      <p class="muted">Kehadiran anda sudah cukup bermakna. Bagi yang ingin menghulurkan salam kaut:</p>
+      <div class="bank">
+        <p id="bBank"></p>
+        <p class="acc" id="bAkaun"></p>
+        <p id="bNama"></p>
+        <button class="btn ghost" id="copyAcc" type="button">📋 Salin no. akaun</button>
+      </div>
+    </section>
+
+    <!-- ================= HUBUNGI ================= -->
+    <section class="s" id="secHubungi" hidden>
+      <h2 class="st">Hubungi Kami</h2>
+      <div class="btnrow col" id="hubungi"></div>
+    </section>
+
+    <footer class="s end">
+      <div class="orn orn-end" aria-hidden="true"></div>
+      <p id="penutup"></p>
+      <p class="names small" id="endNames"></p>
+      <p class="credit">Jemputan digital · Planner Nikah A–Z<br>Created by Hizami Radzi</p>
+    </footer>
+  </div>
+</main>
+
+<nav class="dock" id="dock" hidden>
+  <button data-go="secLokasi">📍<span>Lokasi</span></button>
+  <button data-open="calDlg">📅<span>Kalendar</span></button>
+  <button data-go="secRsvp" class="hl">💌<span>RSVP</span></button>
+  <button data-go="secHubungi" id="dockCall">📞<span>Hubungi</span></button>
+</nav>
+
+<dialog id="calDlg" class="sheet">
+  <p class="st">Simpan tarikh</p>
+  <a class="btn wide" id="gcal" target="_blank" rel="noopener">Google Calendar</a>
+  <button class="btn wide ghost" id="icsBtn" type="button">iPhone / Outlook (.ics)</button>
+  <button class="btn wide ghost" data-close type="button">Tutup</button>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+<script src="/jemputan.js"></script>
+</body>
+</html>
