@@ -17,7 +17,9 @@ module.exports = async (req, res) => {
 
   const b = readBody(req);
   // Perangkap bot: medan tersembunyi mesti kosong & borang tidak dihantar terlalu cepat.
-  if (b.laman || (Number(b.t) && now - Number(b.t) < 2500)) return res.status(200).json({ ok: true });
+  // "ms" = tempoh borang dibuka, dikira pada telefon tetamu (tidak terjejas jika jam telefon salah).
+  const ms = Number(b.ms);
+  if (b.laman || (b.ms !== undefined && (!Number.isFinite(ms) || ms < 2500))) return res.status(200).json({ ok: true });
 
   const nama = String(b.nama || '').trim().slice(0, 60);
   const hadir = b.hadir === 'Hadir' || b.hadir === 'Tidak Hadir' ? b.hadir : '';
