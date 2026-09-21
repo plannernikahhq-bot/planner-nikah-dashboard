@@ -324,7 +324,7 @@
     var slots = (D.rsvp && D.rsvp.slot) || [];
     if (ST.hadir === 'Hadir' && slots.length && !$('#fSlot').value) { err.textContent = 'Sila pilih slot masa.'; return; }
     var body = { nama: nama, tel: $('#fTel').value, hadir: ST.hadir, pax: ST.hadir === 'Hadir' ? ST.pax : 0, slot: $('#fSlot').value,
-      ucapan: $('#fUcapan').value.trim(), laman: $('#fLaman').value, t: ST.t };
+      ucapan: $('#fUcapan').value.trim(), laman: $('#fLaman').value, ms: Date.now() - ST.t };
     var btn = $('#rsvpBtn'); btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Menghantar…';
     var finish = function (res) {
       btn.removeAttribute('aria-disabled'); btn.textContent = 'Hantar RSVP';
