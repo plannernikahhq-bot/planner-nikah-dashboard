@@ -8,17 +8,33 @@ function scriptUrl() {
   return { url };
 }
 
+// Respons sah skrip Planner Nikah: { ok:false, code } atau { ok:true, version, ... } ({ ok:true } untuk RSVP).
+function looksValid(j, params) {
+  if (!j || typeof j !== 'object' || typeof j.ok !== 'boolean') return false;
+  if (!j.ok) return typeof j.code === 'string';
+  return params.action === 'rsvp' || typeof j.version === 'string';
+}
+
 async function callScript(params) {
   const s = scriptUrl();
   if (s.error) return { ok: false, code: s.error };
   const qs = new URLSearchParams(params).toString();
-  try {
-    const r = await fetch(`${s.url}?${qs}`, { redirect: 'follow' });
-    const text = await r.text();
-    try { return JSON.parse(text); } catch (e) { return { ok: false, code: 'SCRIPT_NOT_PUBLIC' }; }
-  } catch (e) {
-    return { ok: false, code: 'NETWORK' };
+  let last = { ok: false, code: 'NETWORK' };
+  // Google kadang-kadang membalas halaman HTML sekali-sekala; cuba semula sekali.
+  for (let i = 0; i < 2; i++) {
+    try {
+      const r = await fetch(`${s.url}?${qs}`, { redirect: 'follow' });
+      const text = await r.text();
+      let j = null;
+      try { j = JSON.parse(text); } catch (e) {}
+      if (looksValid(j, params)) return j;
+      last = { ok: false, code: 'SCRIPT_NOT_PUBLIC' };
+    } catch (e) {
+      last = { ok: false, code: 'NETWORK' };
+    }
+    if (i === 0) await new Promise((res) => setTimeout(res, 700));
   }
+  return last;
 }
 
 function readBody(req) {
