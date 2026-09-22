@@ -15,13 +15,15 @@ function looksValid(j, params) {
   return params.action === 'rsvp' || typeof j.version === 'string';
 }
 
-async function callScript(params) {
+async function callScript(params, opts) {
   const s = scriptUrl();
   if (s.error) return { ok: false, code: s.error };
   const qs = new URLSearchParams(params).toString();
   let last = { ok: false, code: 'NETWORK' };
   // Google kadang-kadang membalas halaman HTML sekali-sekala; cuba semula sekali.
-  for (let i = 0; i < 2; i++) {
+  // (Tidak untuk operasi simpan dari dashboard, supaya rekod tidak tertambah dua kali.)
+  const tries = opts && opts.retry === false ? 1 : 2;
+  for (let i = 0; i < tries; i++) {
     try {
       const r = await fetch(`${s.url}?${qs}`, { redirect: 'follow' });
       const text = await r.text();
@@ -32,7 +34,7 @@ async function callScript(params) {
     } catch (e) {
       last = { ok: false, code: 'NETWORK' };
     }
-    if (i === 0) await new Promise((res) => setTimeout(res, 700));
+    if (i + 1 < tries) await new Promise((res) => setTimeout(res, 700));
   }
   return last;
 }
