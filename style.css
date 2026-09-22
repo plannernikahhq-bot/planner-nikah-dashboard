@@ -59,11 +59,11 @@ button{font:inherit; color:inherit; cursor:pointer}
 .side{display:contents}
 .side .brand,.side .side-credit{display:none}
 .main{flex:1; min-width:0; padding:16px 16px calc(88px + env(safe-area-inset-bottom)); max-width:1240px; margin:0 auto; width:100%}
-.nav{position:fixed; left:0; right:0; bottom:0; z-index:20; display:grid; grid-template-columns:repeat(6,1fr);
+.nav{position:fixed; left:0; right:0; bottom:0; z-index:20; display:grid; grid-template-columns:repeat(7,1fr);
   background:var(--card); border-top:1px solid var(--line); padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
 .nav button{border:0; background:none; display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 0; border-radius:12px; color:var(--muted)}
 .nav button span{font-size:19px; line-height:1; filter:grayscale(1); opacity:.7}
-.nav button em{font-style:normal; font-size:10.5px; font-weight:600}
+.nav button em{font-style:normal; font-size:10.5px; font-weight:600; white-space:nowrap}
 .nav button.active{color:var(--rose-d); background:var(--rose-l)}
 .nav button.active span{filter:none; opacity:1}
 
@@ -225,3 +225,34 @@ dialog.sheet::backdrop{background:rgba(30,20,22,.45)}
 .help ol{padding-left:20px; margin:4px 0 8px}
 .help li{margin-bottom:8px}
 .help p{margin:0 0 10px}
+
+/* ---------- edit (kemas kini dari dashboard) ---------- */
+.chips{display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin:0 -2px 12px; scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none; border:1px solid var(--line); background:var(--card); padding:8px 12px; border-radius:99px; font-size:13px; font-weight:600; color:var(--muted)}
+.chips button.on{background:var(--rose); border-color:var(--rose); color:#fff}
+.edit-bar{display:flex; gap:8px; align-items:flex-start}
+.edit-bar .search{margin:0; flex:1}
+.btn.add{width:auto; flex:none; padding:11px 14px; border-radius:12px; background:var(--sage); color:#fff; font-size:14px}
+.row.tap{cursor:pointer; border-radius:10px}
+.row.tap:hover{background:var(--bg)}
+.row.tap .go{color:var(--muted); font-size:18px; flex:none}
+.edit-hint{font-size:13px; margin:0 0 12px}
+.edit-sheet{max-height:92dvh}
+.edit-sheet form{display:flex; flex-direction:column; max-height:92dvh}
+.edit-sheet .sheet-body{overflow-y:auto}
+.edit-fields{display:grid; gap:12px}
+.fld label{display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:5px}
+.fld input,.fld select{width:100%; padding:11px 12px; border-radius:12px; border:1.5px solid var(--line); background:var(--bg); color:var(--ink); font:inherit; font-size:16px}
+.fld input:focus,.fld select:focus{outline:none; border-color:var(--rose)}
+.fld.ro div{padding:10px 12px; border-radius:12px; background:var(--line); color:var(--muted); font-size:14px}
+.fld.req label:after{content:" *"; color:var(--red)}
+.edit-err{min-height:18px; color:var(--red); font-weight:600; font-size:13.5px; margin:12px 0 8px}
+.edit-actions{display:grid; gap:8px}
+.btn.ghost{background:var(--bg); border:1px solid var(--line)}
+.btn.ghost.danger{color:var(--red)}
+.edit-note{margin:12px 0 0}
+.toast{position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px); background:#2F2A2B; color:#fff; padding:11px 18px; border-radius:99px; font-size:14px; font-weight:600; opacity:0; pointer-events:none; transition:.25s; z-index:50; max-width:calc(100% - 32px); text-align:center}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+@media (min-width:900px){ .toast{bottom:28px} }
+

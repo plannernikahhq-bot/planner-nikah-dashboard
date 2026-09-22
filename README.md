@@ -2,7 +2,7 @@
 
 Dashboard web + **Jemputan Digital & RSVP** untuk pembeli template **Planner Nikah A–Z** (Google Sheets). Buka di **telefon, tablet dan laptop**, dan data dikemas kini terus dari Google Sheet anda.
 
-- `/` : dashboard peribadi (perlu PIN)
+- `/` : dashboard peribadi (perlu PIN), termasuk tab **✏️ Edit** untuk tambah & kemas kini data terus ke Google Sheet
 - `/jemputan` : kad jemputan digital + RSVP untuk dikongsi di WhatsApp (4 reka bentuk)
 
 **Created by Hizami Radzi**
@@ -25,6 +25,20 @@ Semasa deploy, Vercel akan minta satu nilai sahaja: **APPS_SCRIPT_URL**.
 6. Salin **Web app URL** (berakhir dengan `/exec`). Itulah `APPS_SCRIPT_URL`.
 
 Panduan penuh bergambar ada dalam PDF **Cara Sambung Dashboard** yang disertakan bersama template.
+
+## ✏️ Edit dari dashboard
+
+Tab **Edit** membolehkan anda tambah, kemas kini dan padam rekod terus dari telefon: Bajet, Bayaran, Tetamu, Checklist, Urusan Nikah, Hantaran, Vendor, Tentatif, AJK, Duit Salam, Simpanan, RSVP Online dan Maklumat Majlis.
+
+- Semua perubahan ditulis ke Google Sheet anda (perlu PIN).
+- Hanya kolum input ditulis. Kolum formula (automatik) tidak disentuh.
+- Pilihan dropdown dibaca terus dari Google Sheet.
+
+Sudah deploy versi lama (sebelum v2.1)? Tampal `apps-script/Code.gs` terbaru dalam Apps Script, Save, kemudian
+**Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy** (URL kekal sama). Deploy semula laman Vercel dengan kod terkini juga.
+Jika dropdown tiada dalam tab template, jalankan fungsi `setupDropdown` sekali dari editor Apps Script.
+
+Laman demo boleh dijadikan *baca sahaja* dengan Environment Variable `READ_ONLY = 1` di Vercel.
 
 ## Jemputan Digital & RSVP
 
@@ -57,6 +71,7 @@ Sudah deploy versi lama? Tampal `Code.gs` baharu dalam Apps Script, jalankan `se
 |---|---|
 | `index.html`, `app.js`, `style.css` | Aplikasi dashboard (tanpa library luar) |
 | `api/data.js` | Proksi selamat Vercel → Apps Script (dashboard) |
+| `api/edit.js` | Baca & simpan rekod dari tab Edit (perlu PIN) |
 | `jemputan.html`, `jemputan.js`, `jemputan.css` | Kad jemputan digital (4 reka bentuk) |
 | `api/jemputan.js`, `api/rsvp.js`, `api/page.js` | Baca butiran jemputan, hantar RSVP, papar halaman |
 | `apps-script/Code.gs` | Salinan rujukan skrip dalam template Google Sheet |

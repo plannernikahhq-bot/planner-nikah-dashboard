@@ -109,6 +109,7 @@
     $('#loading').hidden = true; $('#lock').hidden = true; $('#app').hidden = false;
     $('#demoBanner').hidden = MODE !== 'demo';
     render();
+    if (VIEW === 'edit') loadEdit(false);
   }
   function showErr(msg) { var b = $('#errBanner'); b.textContent = msg; b.hidden = false; }
   function setStatus() {
@@ -123,6 +124,7 @@
     $$('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'v-' + view); });
     try { history.replaceState(null, '', '#' + view); } catch (e) {}
     window.scrollTo({ top: 0 });
+    if (view === 'edit' && DATA) loadEdit(false);
   }
 
   // ---------------------------------------------------------------- model
@@ -685,6 +687,209 @@
       simpanan: { sumberDana: 8000, bulanan: bulanan } };
   }
 
+  // ---------------------------------------------------------------- edit (tulis ke Google Sheet)
+  var ED_TABLES = [['bajet', '💰 Bajet'], ['bayaran', '🧾 Bayaran'], ['tetamu', '👥 Tetamu'], ['checklist', '✅ Checklist'],
+    ['urusan', '📜 Urusan Nikah'], ['hantaran', '🎁 Hantaran'], ['vendor', '🤝 Vendor'], ['tentatif', '🕰️ Tentatif'], ['ajk', '📋 AJK'],
+    ['salam', '🧧 Duit Salam'], ['simpanan', '🏦 Simpanan'], ['rsvp', '💌 RSVP Online'], ['maklumat', '💍 Maklumat Majlis']];
+  var E = { t: 'bajet', cache: {}, at: {}, q: '', loading: false, err: '', cur: null };
+  var ED_MSG = {
+    WRONG_PIN: 'PIN telah berubah. Sila masukkan PIN semula.',
+    LOCKED: 'Terlalu banyak cubaan PIN salah. Cuba lagi selepas 15 minit.',
+    CHANGED: 'Rekod ini telah berubah dalam Google Sheet. Senarai dimuat semula, sila cuba lagi.',
+    FULL: 'Jadual ini sudah penuh. Tambah baris baharu terus dalam Google Sheet.',
+    READ_ONLY: 'Ini laman demo, jadi perubahan tidak disimpan. Dalam dashboard anda sendiri, butang ini menyimpan terus ke Google Sheet.',
+    TOO_MANY: 'Terlalu banyak simpanan dalam masa singkat. Tunggu seminit.',
+    BUSY: 'Google Sheet sedang sibuk. Cuba lagi sebentar.',
+    NETWORK: 'Tiada sambungan internet. Cuba lagi.',
+    SCRIPT_NOT_PUBLIC: 'Google Sheet tidak membalas. Cuba lagi sebentar.',
+    NO_SHEET: 'Tab tidak dijumpai dalam Google Sheet: ',
+    NO_COLUMN: 'Kolum tidak dijumpai dalam Google Sheet: ',
+    KEY_REQUIRED: 'Sila isi: ',
+    INVALID_FIELD: 'Nilai tidak sah untuk: ',
+    TOO_LONG: 'Teks terlalu panjang.',
+    OLD_SCRIPT: 'Skrip dalam Google Sheet anda versi lama. Kemas kini skrip (rujuk panduan) untuk guna ciri Edit.'
+  };
+  function edMsg(res) {
+    var c = (res && res.code) || 'NETWORK', m = ED_MSG[c] || ('Ralat: ' + c);
+    return /: $/.test(m) && res && res.message ? m + res.message : m;
+  }
+  function editApi(body) {
+    body.pin = PIN;
+    return fetch('/api/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return (r.headers.get('content-type') || '').indexOf('json') >= 0 ? r.json() : { ok: false, code: 'NETWORK' }; })
+      .catch(function () { return { ok: false, code: 'NETWORK' }; });
+  }
+  var toastT;
+  function toast(m) {
+    var t = $('#toast'); t.textContent = m; t.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 2800);
+  }
+
+  function loadEdit(force) {
+    if (MODE === 'demo') { renderEdit(); return; }
+    var t = E.t;
+    if (!force && E.cache[t] && Date.now() - E.at[t] < 60000) { renderEdit(); return; }
+    E.loading = true; E.err = ''; renderEdit();
+    editApi({ op: 'get', t: t }).then(function (res) {
+      if (res && res.code === 'WRONG_PIN') { E.loading = false; handle(res, false, true); return; }
+      if (res && res.ok && res.fields) { E.cache[t] = res; E.at[t] = Date.now(); }
+      if (E.t !== t) return;
+      E.loading = false;
+      E.err = res && res.ok ? (res.fields ? '' : ED_MSG.OLD_SCRIPT) : edMsg(res);
+      renderEdit();
+    });
+  }
+
+  function edField(d, h) {
+    for (var i = 0; i < d.fields.length; i++) if (d.fields[i].h === h) return d.fields[i];
+    return { h: h, type: 'text' };
+  }
+  function edFmt(f, v) {
+    if (blank(v)) return '';
+    if (f.type === 'num') return /RM/.test(f.h) ? RM(v) : String(v);
+    if (f.type === 'date') return fmtD(v);
+    return String(v);
+  }
+
+  function renderEdit() {
+    var chips = '<div class="chips" id="edChips">' + ED_TABLES.map(function (x) {
+      return '<button type="button" data-t="' + x[0] + '" class="' + (x[0] === E.t ? 'on' : '') + '">' + esc(x[1]) + '</button>';
+    }).join('') + '</div>';
+    var body, d = E.cache[E.t];
+    if (MODE === 'demo') {
+      body = '<div class="card">' + empty('Mod demo: sambungkan Google Sheet anda dahulu. Selepas itu anda boleh tambah dan kemas kini data terus dari sini.') + '</div>';
+    } else if (E.loading && !d) {
+      body = '<div class="card" style="display:flex;gap:12px;align-items:center"><div class="spinner"></div><span class="muted">Memuatkan dari Google Sheet…</span></div>';
+    } else if (E.err) {
+      body = '<div class="card"><p class="empty" style="color:var(--red)">' + esc(E.err) + '</p><button type="button" class="btn ghost" data-act="reload">Cuba lagi</button></div>';
+    } else if (d && d.single) {
+      var r0 = d.rows[0] || { v: {} };
+      body = '<div class="card"><h2>' + esc(d.label) + '</h2><div class="list">' + d.fields.map(function (f) {
+        return '<div class="row"><div class="main-col"><div class="s">' + esc(f.h) + '</div><div class="t">' + (esc(edFmt(f, r0.v[f.h])) || '—') + '</div></div></div>';
+      }).join('') + '</div><button type="button" class="btn primary" data-act="edit0" style="margin-top:12px">✏️ Edit maklumat majlis</button></div>';
+    } else if (d) {
+      var q = E.q.toLowerCase();
+      var rows = d.rows.filter(function (r) {
+        if (!q) return true;
+        return (r.k + ' ' + d.show.map(function (h) { return r.v[h]; }).join(' ')).toLowerCase().indexOf(q) >= 0;
+      });
+      var list = rows.slice(0, 300).map(function (r) {
+        var sub = d.show.map(function (h) { return edFmt(edField(d, h), r.v[h]); }).filter(Boolean).join(' · ');
+        return '<div class="row tap" data-r="' + r.r + '"><div class="main-col"><div class="t">' + esc(r.k) + '</div>' +
+          (sub ? '<div class="s">' + esc(sub) + '</div>' : '') + '</div><span class="go">›</span></div>';
+      }).join('');
+      body = '<div class="card"><h2>' + esc(d.label) + ' <small>' + d.rows.length + ' rekod' + (E.loading ? ' · memuat semula…' : '') + '</small></h2>' +
+        '<div class="edit-bar"><input id="eq" class="search" type="search" placeholder="Cari…" value="' + esc(E.q) + '" autocomplete="off">' +
+        (d.add ? '<button type="button" class="btn add" data-act="add">+ Tambah</button>' : '') + '</div>' +
+        '<div class="list" style="margin-top:6px">' + (list || empty(q ? 'Tiada padanan.' : 'Belum ada rekod.' + (d.add ? ' Tekan + Tambah.' : ''))) + '</div>' +
+        (rows.length > 300 ? '<p class="muted small">Memaparkan 300 rekod pertama. Guna carian untuk rekod lain.</p>' : '') + '</div>';
+    } else {
+      body = '';
+    }
+    $('#v-edit').innerHTML = '<p class="edit-hint muted">Pilih bahagian, tekan rekod untuk edit, atau tekan <b>+ Tambah</b>. Semua perubahan disimpan terus ke Google Sheet anda.</p>' + chips + body;
+    var on = $('#edChips .on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+
+  function openForm(row) {
+    var d = E.cache[E.t];
+    if (!d) return;
+    E.cur = { r: row ? row.r : 0, k: row ? row.k : '', isNew: !row, orig: row ? row.v : {} };
+    $('#editTitle').textContent = (row || d.single ? 'Edit · ' : 'Tambah · ') + d.label;
+    var html = d.fields.map(function (f, i) {
+      var v = row ? row.v[f.h] : '';
+      if (v === null || v === undefined) v = '';
+      var id = 'ef' + i, attr = ' id="' + id + '" data-h="' + esc(f.h) + '"';
+      if (f.lock) return '<div class="fld ro"><label>' + esc(f.h) + ' <small>(automatik)</small></label><div>' + (esc(edFmt(f, v)) || '—') + '</div></div>';
+      var input;
+      if (f.type === 'list') {
+        var opts = (f.options || []).slice();
+        if (v !== '' && opts.indexOf(String(v)) < 0) opts.unshift(String(v));
+        input = '<select' + attr + '><option value="">—</option>' + opts.map(function (o) {
+          return '<option' + (String(o) === String(v) ? ' selected' : '') + '>' + esc(o) + '</option>';
+        }).join('') + '</select>';
+      } else if (f.type === 'num') {
+        input = '<input' + attr + ' type="number" inputmode="decimal" step="any"' + (f.min !== undefined ? ' min="' + f.min + '"' : '') +
+          (f.max !== undefined ? ' max="' + f.max + '"' : '') + ' value="' + esc(v) + '">';
+      } else if (f.type === 'date') {
+        input = '<input' + attr + ' type="date" value="' + esc(v) + '">';
+      } else if (f.type === 'time') {
+        input = '<input' + attr + ' type="time" value="' + esc(v) + '">';
+      } else {
+        input = '<input' + attr + ' type="text" maxlength="200" value="' + esc(v) + '">';
+      }
+      return '<div class="fld' + (f.h === d.key ? ' req' : '') + '"><label for="' + id + '">' + esc(f.h) + '</label>' + input + '</div>';
+    }).join('');
+    if (row) html += (d.ro || []).map(function (h) {
+      return '<div class="fld ro"><label>' + esc(h) + ' <small>(automatik)</small></label><div>' + (esc(row.v[h]) || '—') + '</div></div>';
+    }).join('');
+    $('#editFields').innerHTML = html;
+    $('#editErr').textContent = '';
+    $('#editDel').hidden = !row || !d.clear;
+    $('#editSave').disabled = false; $('#editSave').textContent = '💾 Simpan ke Google Sheet';
+    $('#editDlg').showModal();
+    if (!row) { var first = $('#editFields input, #editFields select'); if (first) setTimeout(function () { first.focus(); }, 50); }
+  }
+
+  function edSave(op, f) {
+    var btn = op === 'clear' ? $('#editDel') : $('#editSave'), label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Menyimpan…'; $('#editErr').textContent = '';
+    editApi({ op: op, t: E.t, r: E.cur.r, k: E.cur.k, f: f }).then(function (res) {
+      btn.disabled = false; btn.textContent = label;
+      if (res && res.ok && res.version) {
+        $('#editDlg').close();
+        toast(op === 'clear' ? 'Rekod dipadam dari Google Sheet ✓' : 'Disimpan ke Google Sheet ✓');
+        loadEdit(true); refresh();
+        return;
+      }
+      if (res && res.ok) { $('#editErr').textContent = ED_MSG.OLD_SCRIPT; return; }
+      if (res && res.code === 'WRONG_PIN') { $('#editDlg').close(); handle(res, false, true); return; }
+      $('#editErr').textContent = edMsg(res);
+      if (res && res.code === 'CHANGED') loadEdit(true);
+    });
+  }
+
+  $('#editForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var d = E.cache[E.t], cur = E.cur, f = {}, bad = '';
+    $$('#editFields [data-h]').forEach(function (inp) {
+      var h = inp.dataset.h, v = inp.value.trim();
+      if (inp.validity && !inp.validity.valid) bad = bad || h;
+      var o = cur.orig[h]; o = o === null || o === undefined ? '' : String(o);
+      if (cur.isNew ? v !== '' : v !== o) f[h] = v;
+    });
+    if (bad) { $('#editErr').textContent = 'Nilai tidak sah untuk: ' + bad; return; }
+    if (d.key && (cur.isNew ? !f[d.key] : f[d.key] === '')) { $('#editErr').textContent = 'Sila isi: ' + d.key; return; }
+    if (!Object.keys(f).length) { $('#editDlg').close(); toast('Tiada perubahan'); return; }
+    edSave(cur.isNew ? 'add' : 'update', f);
+  });
+  $('#editDel').addEventListener('click', function () {
+    if (!E.cur || E.cur.isNew) return;
+    if (!confirm('Padam rekod "' + E.cur.k + '" dari Google Sheet?\n\nKolum automatik (formula) tidak akan terjejas.')) return;
+    edSave('clear', {});
+  });
+  $('#v-edit').addEventListener('click', function (e) {
+    var chip = e.target.closest('#edChips button');
+    if (chip) { E.t = chip.dataset.t; E.q = ''; loadEdit(false); return; }
+    var act = e.target.closest('[data-act]');
+    if (act) {
+      var a = act.dataset.act;
+      if (a === 'reload') loadEdit(true);
+      if (a === 'add') openForm(null);
+      if (a === 'edit0') { var d0 = E.cache[E.t]; if (d0) openForm(d0.rows[0] || { r: 0, k: '', v: {} }); }
+      return;
+    }
+    var row = e.target.closest('.row.tap');
+    if (row) {
+      var d = E.cache[E.t], r = Number(row.dataset.r);
+      for (var i = 0; d && i < d.rows.length; i++) if (d.rows[i].r === r) { openForm(d.rows[i]); break; }
+    }
+  });
+  $('#v-edit').addEventListener('input', function (e) {
+    if (e.target.id !== 'eq') return;
+    E.q = e.target.value; var pos = e.target.selectionStart; renderEdit();
+    var q = $('#eq'); if (q) { q.focus(); try { q.setSelectionRange(pos, pos); } catch (er) {} }
+  });
+
   // ---------------------------------------------------------------- events
   $('#lockForm').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -718,7 +923,7 @@
     $('#menu').close();
     if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; } else $('#install').showModal();
   });
-  $('#logoutBtn').addEventListener('click', function () { store.del('pn_pin'); PIN = ''; DATA = null; $('#menu').close(); showLock('Dashboard dikunci.'); });
+  $('#logoutBtn').addEventListener('click', function () { store.del('pn_pin'); PIN = ''; DATA = null; E.cache = {}; $('#menu').close(); showLock('Dashboard dikunci.'); });
   $$('dialog').forEach(function (dlg) {
     dlg.addEventListener('click', function (e) { if (e.target === dlg || e.target.closest('[data-close]')) dlg.close(); });
   });
@@ -742,7 +947,7 @@
 
   // ---------------------------------------------------------------- start
   var h = (location.hash || '').replace('#', '');
-  if (['utama', 'bajet', 'bayaran', 'tetamu', 'persiapan', 'harih'].indexOf(h) >= 0) go(h);
+  if (['utama', 'bajet', 'bayaran', 'tetamu', 'persiapan', 'harih', 'edit'].indexOf(h) >= 0) go(h);
   PIN = store.get('pn_pin') || '';
   var hadPin = !!PIN;
   fetchData(PIN).then(function (res) { handle(res, false, hadPin); });

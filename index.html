@@ -56,6 +56,7 @@
       <button data-view="tetamu"><span>👥</span><em>Tetamu</em></button>
       <button data-view="persiapan"><span>✅</span><em>Persiapan</em></button>
       <button data-view="harih"><span>💍</span><em>Hari H</em></button>
+      <button data-view="edit"><span>✏️</span><em>Edit</em></button>
     </nav>
     <p class="side-credit">Planner Nikah A–Z<br>Created by Hizami Radzi</p>
   </aside>
@@ -86,6 +87,7 @@
       <section id="v-tetamu" class="view"></section>
       <section id="v-persiapan" class="view"></section>
       <section id="v-harih" class="view"></section>
+      <section id="v-edit" class="view"></section>
     </div>
 
     <footer class="foot">Planner Nikah A–Z · Created by Hizami Radzi</footer>
@@ -117,6 +119,23 @@
     <p class="muted small">Rujuk PDF <b>Cara Sambung Dashboard</b> untuk panduan bergambar.</p>
   </div>
 </dialog>
+
+<!-- ============ BORANG EDIT ============ -->
+<dialog id="editDlg" class="sheet edit-sheet">
+  <form id="editForm" novalidate>
+    <div class="sheet-head"><b id="editTitle">Edit</b><button type="button" class="icon-btn" data-close aria-label="Tutup">✕</button></div>
+    <div class="sheet-body">
+      <div id="editFields" class="edit-fields"></div>
+      <p id="editErr" class="edit-err" role="alert"></p>
+      <div class="edit-actions">
+        <button type="submit" class="btn primary" id="editSave">💾 Simpan ke Google Sheet</button>
+        <button type="button" class="btn ghost danger" id="editDel" hidden>🗑 Padam rekod ini</button>
+      </div>
+      <p class="muted small edit-note">Perubahan ditulis terus ke Google Sheet anda. Kolum automatik (formula) dikira semula oleh Google Sheet.</p>
+    </div>
+  </form>
+</dialog>
+<div id="toast" class="toast" role="status"></div>
 
 <dialog id="install" class="sheet">
   <div class="sheet-head"><b>Pasang di skrin utama</b><button class="icon-btn" data-close aria-label="Tutup">✕</button></div>
