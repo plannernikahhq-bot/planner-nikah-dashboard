@@ -7,13 +7,14 @@
  *  - Membenarkan DASHBOARD anda membaca ringkasan data (perlu PIN di tab Dashboard, sel C13).
  *  - Membenarkan JEMPUTAN DIGITAL membaca butiran majlis dari tab "Jemputan Digital" (tanpa PIN).
  *  - Menyimpan jawapan RSVP tetamu ke tab "RSVP Online".
+ *  - Membenarkan anda KEMAS KINI data dari dashboard (perlu PIN; hanya kolum input, formula tidak disentuh).
  *  - Hanya fail ini sahaja yang boleh dibaca / ditulis (@OnlyCurrentDoc).
  *  - Nombor telefon tetamu TIDAK dihantar ke dashboard atau jemputan.
  *
  * JANGAN ubah kod ini. Ikut panduan "Cara Sambung Dashboard" & "Cara Guna Jemputan Digital".
  */
 
-var VERSION = '2.0';
+var VERSION = '2.1';
 var PIN_SHEET = 'Dashboard';
 var PIN_CELL = 'C13';
 var MAX_FAILS = 10;
@@ -48,6 +49,8 @@ function doGet(e) {
   }
 
   try {
+    if (p.action === 'edit') return json_(editGet_(ss, p.t));
+    if (p.action === 'save') return json_(editSave_(ss, p));
     return json_({ ok: true, version: VERSION, updated: new Date().toISOString(), data: collect_(ss) });
   } catch (err) {
     return json_({ ok: false, code: 'READ_ERROR', message: String(err && err.message || err) });
@@ -318,6 +321,291 @@ function rows_(ss, sheetName, headerRow, tz, map, keyField) {
     if (key !== '' && key !== null && key !== undefined) out.push(o);
   }
   return out;
+}
+
+// =========================================================================
+// KEMAS KINI DARI DASHBOARD (perlu PIN)
+// Hanya kolum dalam senarai di bawah boleh ditulis. Sel yang mengandungi
+// formula TIDAK akan ditulis walaupun disenaraikan.
+// Jenis: text | num | date | time | list (pilihan dibaca dari dropdown sheet)
+// =========================================================================
+
+var WRITE_LIMIT = 60; // simpanan maksimum seminit
+
+var EDIT = {
+  maklumat: { label: 'Maklumat Majlis', sheet: 'Dashboard', single: true, fields: [
+    ['Nama pengantin lelaki', 'text', 'C5'], ['Nama pengantin perempuan', 'text', 'C6'],
+    ['Tarikh akad nikah', 'date', 'C7'], ['Tarikh resepsi', 'date', 'C8'], ['Lokasi majlis', 'text', 'C9'],
+    ['Bajet sasaran (RM)', 'num', 'C10'], ['Anggaran bilangan tetamu (pax)', 'num', 'C11'], ['Harga katering / pax (RM)', 'num', 'C12']] },
+  bajet: { label: 'Bajet', sheet: 'Bajet Utama', head: 6, key: 'Item Perbelanjaan', show: ['Kategori', 'Anggaran (RM)', 'Status'], fields: [
+    ['Kategori', 'list'], ['Item Perbelanjaan', 'text'], ['Pihak', 'list'], ['Anggaran (RM)', 'num'], ['Kos Sebenar (RM)', 'num'],
+    ['Dibayar (RM)', 'num'], ['Status', 'list'], ['Vendor', 'text'], ['Catatan', 'text']] },
+  bayaran: { label: 'Bayaran', sheet: 'Jadual Bayaran', head: 6, key: 'Vendor', show: ['Perkara', 'Amaun (RM)', 'Status'], fields: [
+    ['Vendor', 'text'], ['Perkara', 'text'], ['Peringkat Bayaran', 'list'], ['Amaun (RM)', 'num'], ['Tarikh Akhir', 'date'],
+    ['Tarikh Dibayar', 'date'], ['Kaedah', 'list'], ['Status', 'list'], ['No. Resit / Catatan', 'text']] },
+  tetamu: { label: 'Tetamu', sheet: 'Senarai Tetamu', head: 6, key: 'Nama / Keluarga', show: ['Pihak', 'Bil. Dijemput (pax)', 'RSVP'], fields: [
+    ['Nama / Keluarga', 'text'], ['Pihak', 'list'], ['Kumpulan', 'list'], ['Bil. Dijemput (pax)', 'num'], ['Kad Dihantar?', 'list'],
+    ['RSVP', 'list'], ['Pax Sah Hadir', 'num'], ['Majlis', 'list'], ['No. Meja', 'text'], ['Catatan', 'text']] },
+  checklist: { label: 'Checklist', sheet: 'Checklist A-Z', head: 6, key: 'Tugasan', show: ['Tempoh', 'Status'], ro: ['Tarikh Sasaran'], fields: [
+    ['Tempoh', 'list'], ['Tugasan', 'text'], ['PIC', 'text'], ['Status', 'list'], ['Tarikh Siap', 'date'], ['Catatan', 'text']] },
+  urusan: { label: 'Urusan Nikah', sheet: 'Urusan Nikah', head: 6, key: 'Dokumen / Urusan', show: ['Pihak', 'Status'], fields: [
+    ['Dokumen / Urusan', 'text'], ['Pihak', 'list'], ['Tempat / Pejabat', 'text'], ['Tarikh Sasaran', 'date'], ['Status', 'list'], ['Catatan', 'text']] },
+  vendor: { label: 'Vendor', sheet: 'Vendor', head: 6, key: 'Nama Vendor', show: ['Kategori', 'Sebut Harga (RM)', 'Keputusan'], fields: [
+    ['Kategori', 'list'], ['Nama Vendor', 'text'], ['PIC', 'text'], ['No. Telefon', 'text'], ['IG / Website', 'text'],
+    ['Pakej / Apa Termasuk', 'text'], ['Sebut Harga (RM)', 'num'], ['Rating (1-5)', 'num', 1, 5], ['Keputusan', 'list'],
+    ['Tarikh Tempah', 'date'], ['Catatan', 'text']] },
+  hantaran: { label: 'Hantaran', sheet: 'Hantaran', head: 6, key: 'Isi Hantaran', show: ['Arah Hantaran', 'Status'], ro: ['Jumlah (RM)'], fields: [
+    ['Arah Hantaran', 'list'], ['No. Dulang', 'num'], ['Isi Hantaran', 'text'], ['Kos Barang (RM)', 'num'], ['Kos Gubah (RM)', 'num'],
+    ['Status', 'list'], ['Penggubah / PIC', 'text'], ['Catatan', 'text']] },
+  tentatif: { label: 'Tentatif', sheet: 'Tentatif Majlis', head: 6, key: 'Aturcara', show: ['Majlis', 'Masa Mula'], fields: [
+    ['Majlis', 'list'], ['Masa Mula', 'time'], ['Masa Tamat', 'time'], ['Aturcara', 'text'], ['Lokasi', 'text'], ['PIC', 'text'], ['Catatan', 'text']] },
+  ajk: { label: 'AJK', sheet: 'AJK & Tugasan', head: 6, key: 'Unit / Tugas', show: ['Nama AJK', 'Majlis'], fields: [
+    ['Unit / Tugas', 'text'], ['Nama AJK', 'text'], ['No. Telefon', 'text'], ['Majlis', 'list'], ['Masa Bertugas', 'text'], ['Catatan', 'text']] },
+  salam: { label: 'Duit Salam', sheet: 'Duit Salam', head: 6, key: 'Nama Tetamu', show: ['Pihak', 'Amaun (RM)', 'Terima Kasih Dihantar?'], fields: [
+    ['Nama Tetamu', 'text'], ['Hubungan', 'text'], ['Pihak', 'list'], ['Amaun (RM)', 'num'], ['Jenis', 'list'], ['Hadiah (barang)', 'text'],
+    ['Terima Kasih Dihantar?', 'list'], ['Catatan', 'text']] },
+  simpanan: { label: 'Simpanan', sheet: 'Simpanan', head: 21, key: 'Bulan', add: false, clear: false,
+    show: ['Simpan - Lelaki (RM)', 'Simpan - Perempuan (RM)'], ro: ['Sasaran (RM)', 'Jumlah Bulan Ini (RM)'], fields: [
+    ['Simpan - Lelaki (RM)', 'num'], ['Simpan - Perempuan (RM)', 'num'], ['Catatan', 'text']] },
+  rsvp: { label: 'RSVP Online', sheet: RSVP_SHEET, head: RSVP_HEAD_ROW, key: 'Nama', add: false, show: ['Kehadiran', 'Bil. Pax', 'Papar Ucapan?'],
+    ro: ['Masa', 'Ucapan'], fields: [
+    ['Kehadiran', 'list'], ['Bil. Pax', 'num', 0, 20], ['Papar Ucapan?', 'list'], ['Catatan', 'text']] }
+};
+
+function editCols_(sh, cfg) {
+  var lastCol = Math.max(sh.getLastColumn(), 1);
+  var head = sh.getRange(cfg.head, 1, 1, lastCol).getDisplayValues()[0].map(function (h) { return String(h).trim(); });
+  var col = {};
+  head.forEach(function (h, i) { if (h && !col[h]) col[h] = i + 1; });
+  return col;
+}
+
+function listOptions_(cell) {
+  var dv = cell.getDataValidation();
+  if (!dv) return null;
+  var type = dv.getCriteriaType(), c = dv.getCriteriaValues();
+  var out = [];
+  if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) out = c[0];
+  else if (type === SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE) {
+    c[0].getDisplayValues().forEach(function (r) { r.forEach(function (v) { if (String(v).trim()) out.push(String(v).trim()); }); });
+  } else return null;
+  return out.map(String).filter(function (v, i, a) { return v && a.indexOf(v) === i; }).slice(0, 60);
+}
+
+function editVal_(v, shown, type, tz) {
+  if (type === 'date') return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : '';
+  if (type === 'time') {
+    var m = String(shown).trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?$/);
+    if (!m) return '';
+    var h = Number(m[1]) % 12;
+    if (!m[3]) h = Number(m[1]); else if (/p/i.test(m[3])) h += 12;
+    return ('0' + h).slice(-2) + ':' + m[2];
+  }
+  if (type === 'num') return v === '' || v === null ? '' : (isFinite(Number(v)) ? Number(v) : '');
+  return String(shown);
+}
+
+function editGet_(ss, t) {
+  var cfg = EDIT[t];
+  if (!cfg) return { ok: false, code: 'BAD_TABLE' };
+  var sh = ss.getSheetByName(cfg.sheet);
+  if (!sh) return { ok: false, code: 'NO_SHEET', message: cfg.sheet };
+  var tz = ss.getSpreadsheetTimeZone();
+  var base = { ok: true, version: VERSION, t: t, label: cfg.label, single: !!cfg.single,
+    add: !cfg.single && cfg.add !== false, clear: !cfg.single && cfg.clear !== false, key: cfg.key || '', show: cfg.show || [] };
+
+  if (cfg.single) {
+    var v1 = {};
+    base.fields = cfg.fields.map(function (f) {
+      var cell = sh.getRange(f[2]);
+      v1[f[0]] = editVal_(cell.getValue(), cell.getDisplayValue(), f[1], tz);
+      return { h: f[0], type: f[1], lock: !!cell.getFormula() };
+    });
+    base.rows = [{ r: 0, k: '', v: v1 }];
+    return base;
+  }
+
+  var col = editCols_(sh, cfg);
+  if (!col[cfg.key]) return { ok: false, code: 'NO_COLUMN', message: cfg.key };
+  var first = cfg.head + 1, last = sh.getLastRow();
+  var fields = cfg.fields.filter(function (f) { return col[f[0]]; });
+  base.fields = fields.map(function (f) {
+    var o = { h: f[0], type: f[1] };
+    if (f[1] === 'list') { var opts = listOptions_(sh.getRange(first, col[f[0]])); if (opts && opts.length) o.options = opts; else o.type = 'text'; }
+    if (f[1] === 'num') { o.min = f[2] !== undefined ? f[2] : 0; o.max = f[3] !== undefined ? f[3] : 100000000; }
+    return o;
+  });
+  base.ro = (cfg.ro || []).filter(function (h) { return col[h]; });
+  base.rows = [];
+  if (last >= first) {
+    var n = last - first + 1, lastCol = sh.getLastColumn();
+    var rg = sh.getRange(first, 1, n, lastCol), vals = rg.getValues(), shown = rg.getDisplayValues();
+    var kc = col[cfg.key] - 1;
+    for (var i = 0; i < n; i++) {
+      var k = String(shown[i][kc]).trim();
+      if (!k) continue;
+      var v = {};
+      fields.forEach(function (f) { var c = col[f[0]] - 1; v[f[0]] = editVal_(vals[i][c], shown[i][c], f[1], tz); });
+      base.ro.forEach(function (h) { v[h] = String(shown[i][col[h] - 1]); });
+      base.rows.push({ r: first + i, k: k, v: v });
+    }
+  }
+  return base;
+}
+
+function editConvert_(raw, f, opts, tz) {
+  var type = f[1], s = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (s === '') return { v: '' };
+  if (type === 'num') {
+    var x = Number(s.replace(/[,\s]/g, '').replace(/^RM/i, ''));
+    var min = f[2] !== undefined ? f[2] : 0, max = f[3] !== undefined ? f[3] : 100000000;
+    if (!isFinite(x) || x < min || x > max) return { err: f[0] };
+    return { v: Math.round(x * 100) / 100 };
+  }
+  if (type === 'date') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return { err: f[0] };
+    return { v: Utilities.parseDate(s, tz, 'yyyy-MM-dd') };
+  }
+  if (type === 'time') {
+    var m = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return { err: f[0] };
+    return { v: (Number(m[1]) * 60 + Number(m[2])) / 1440 };
+  }
+  if (type === 'list' && opts && opts.length) {
+    return opts.indexOf(s) >= 0 ? { v: s } : { err: f[0] };
+  }
+  return { v: clean_(s, 200) };
+}
+
+function editSave_(ss, p) {
+  var cfg = EDIT[p.t];
+  if (!cfg) return { ok: false, code: 'BAD_TABLE' };
+  var op = String(p.op || '');
+  if (['update', 'add', 'clear'].indexOf(op) < 0) return { ok: false, code: 'INVALID' };
+  var cache = CacheService.getScriptCache();
+  var w = Number(cache.get('writes') || 0);
+  if (w >= WRITE_LIMIT) return { ok: false, code: 'TOO_MANY' };
+  cache.put('writes', String(w + 1), 60);
+
+  var input;
+  try { input = JSON.parse(String(p.f || '{}')); } catch (e) { return { ok: false, code: 'INVALID' }; }
+  if (!input || typeof input !== 'object') return { ok: false, code: 'INVALID' };
+
+  var sh = ss.getSheetByName(cfg.sheet);
+  if (!sh) return { ok: false, code: 'NO_SHEET', message: cfg.sheet };
+  var tz = ss.getSpreadsheetTimeZone();
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(10000)) return { ok: false, code: 'BUSY' };
+  try {
+    if (cfg.single) {
+      if (op !== 'update') return { ok: false, code: 'INVALID' };
+      var todo1 = [];
+      for (var a = 0; a < cfg.fields.length; a++) {
+        var f1 = cfg.fields[a];
+        if (!Object.prototype.hasOwnProperty.call(input, f1[0])) continue;
+        var c1 = editConvert_(input[f1[0]], f1, null, tz);
+        if (c1.err) return { ok: false, code: 'INVALID_FIELD', message: c1.err };
+        todo1.push([sh.getRange(f1[2]), c1.v]);
+      }
+      todo1.forEach(function (x) { if (!x[0].getFormula()) x[0].setValue(x[1]); });
+      return { ok: true, version: VERSION, r: 0 };
+    }
+
+    var col = editCols_(sh, cfg), first = cfg.head + 1, maxRow = sh.getMaxRows();
+    var kc = col[cfg.key];
+    if (!kc) return { ok: false, code: 'NO_COLUMN', message: cfg.key };
+    var row;
+    if (op === 'add') {
+      if (cfg.add === false) return { ok: false, code: 'INVALID' };
+      var keys = sh.getRange(first, kc, maxRow - first + 1, 1).getDisplayValues();
+      for (var i = 0; i < keys.length; i++) { if (!String(keys[i][0]).trim()) { row = first + i; break; } }
+      if (!row) return { ok: false, code: 'FULL' };
+    } else {
+      row = Math.floor(Number(p.r));
+      if (!(row >= first && row <= maxRow)) return { ok: false, code: 'INVALID' };
+      var cur = String(sh.getRange(row, kc).getDisplayValue()).trim();
+      if (!cur || cur !== String(p.k || '').trim()) return { ok: false, code: 'CHANGED' };
+    }
+
+    if (op === 'clear') {
+      if (cfg.clear === false) return { ok: false, code: 'INVALID' };
+      clearRow_(sh, row, col);
+      return { ok: true, version: VERSION, r: row };
+    }
+
+    var todo = [];
+    for (var j = 0; j < cfg.fields.length; j++) {
+      var f = cfg.fields[j];
+      if (!col[f[0]] || !Object.prototype.hasOwnProperty.call(input, f[0])) continue;
+      var cell2 = sh.getRange(row, col[f[0]]);
+      var opts = f[1] === 'list' ? listOptions_(cell2) : null;
+      var c = editConvert_(input[f[0]], f, opts, tz);
+      if (c.err) return { ok: false, code: 'INVALID_FIELD', message: c.err };
+      if (f[0] === cfg.key && c.v === '') return { ok: false, code: 'KEY_REQUIRED', message: cfg.key };
+      todo.push([cell2, c.v]);
+    }
+    if (op === 'add' && !todo.some(function (x) { return x[0].getColumn() === kc && x[1] !== ''; })) {
+      return { ok: false, code: 'KEY_REQUIRED', message: cfg.key };
+    }
+    if (op === 'add') clearRow_(sh, row, col); // buang sisa data lama dalam baris kosong
+    todo.forEach(function (x) { if (!x[0].getFormula()) x[0].setValue(x[1]); });
+    return { ok: true, version: VERSION, r: row };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Dropdown setiap tab: [tab, header, senarai (baris 1 tab "Senarai"), baris akhir]
+var DROPDOWNS = [
+  ['Bajet Utama', 'Kategori', 'Kategori', 200], ['Bajet Utama', 'Pihak', 'Pihak', 200], ['Bajet Utama', 'Status', 'StatusBajet', 200],
+  ['Jadual Bayaran', 'Peringkat Bayaran', 'Peringkat', 200], ['Jadual Bayaran', 'Kaedah', 'Kaedah', 200], ['Jadual Bayaran', 'Status', 'StatusBayar', 200],
+  ['Vendor', 'Kategori', 'Kategori', 200], ['Vendor', 'Keputusan', 'PilihVendor', 200],
+  ['Senarai Tetamu', 'Pihak', 'Pihak', 200], ['Senarai Tetamu', 'Kumpulan', 'Kumpulan', 200], ['Senarai Tetamu', 'Kad Dihantar?', 'YaTidak', 200],
+  ['Senarai Tetamu', 'RSVP', 'RSVP', 200], ['Senarai Tetamu', 'Majlis', 'Majlis', 200],
+  ['Checklist A-Z', 'Tempoh', 'Tempoh', 200], ['Checklist A-Z', 'Status', 'StatusTugas', 200],
+  ['Urusan Nikah', 'Pihak', 'Pihak', 60], ['Urusan Nikah', 'Status', 'StatusTugas', 60],
+  ['Hantaran', 'Arah Hantaran', 'Hantaran', 60], ['Hantaran', 'Status', 'StatusBeli', 60],
+  ['Tentatif Majlis', 'Majlis', 'Majlis', 100], ['AJK & Tugasan', 'Majlis', 'Majlis', 100],
+  ['Duit Salam', 'Pihak', 'Pihak', 500], ['Duit Salam', 'Jenis', 'Salam', 500], ['Duit Salam', 'Terima Kasih Dihantar?', 'YaTidak', 500]
+];
+
+/** Pasang semula dropdown dalam semua tab (selamat dijalankan berulang kali; data tidak diubah). */
+function setupDropdown() {
+  var ss = SpreadsheetApp.getActive();
+  var ls = ss.getSheetByName('Senarai');
+  if (!ls) { Logger.log('Tab "Senarai" tidak dijumpai.'); return; }
+  var lv = ls.getDataRange().getDisplayValues(), lists = {};
+  lv[0].forEach(function (h, c) {
+    var n = 0;
+    for (var r = 1; r < lv.length; r++) if (String(lv[r][c]).trim()) n = r;
+    if (String(h).trim() && n) lists[String(h).trim()] = ls.getRange(2, c + 1, n, 1);
+  });
+  var done = [], miss = [];
+  DROPDOWNS.forEach(function (d) {
+    var sh = ss.getSheetByName(d[0]);
+    if (!sh || !lists[d[2]]) { miss.push(d[0] + ' / ' + d[1]); return; }
+    var col = editCols_(sh, { head: 6 })[d[1]];
+    if (!col) { miss.push(d[0] + ' / ' + d[1]); return; }
+    var last = Math.min(d[3], sh.getMaxRows());
+    var rule = SpreadsheetApp.newDataValidation().requireValueInRange(lists[d[2]], true).setAllowInvalid(true).build();
+    sh.getRange(7, col, last - 6, 1).setDataValidation(rule);
+    done.push(d[0] + ' / ' + d[1]);
+  });
+  var vs = ss.getSheetByName('Vendor');
+  var rc = vs ? editCols_(vs, { head: 6 })['Rating (1-5)'] : 0;
+  if (rc) vs.getRange(7, rc, Math.min(200, vs.getMaxRows()) - 6, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireNumberBetween(1, 5).setAllowInvalid(false).build());
+  Logger.log('Dropdown dipasang: ' + done.length + (miss.length ? ' | Tidak dijumpai: ' + miss.join(', ') : ''));
+}
+
+/** Kosongkan semua sel input (bukan formula) dalam satu baris, dalam lebar jadual sahaja. */
+function clearRow_(sh, row, col) {
+  var lastCol = 0;
+  Object.keys(col).forEach(function (h) { lastCol = Math.max(lastCol, col[h]); });
+  if (!lastCol) return;
+  var formulas = sh.getRange(row, 1, 1, lastCol).getFormulas()[0];
+  for (var c = 0; c < lastCol; c++) {
+    if (!formulas[c]) sh.getRange(row, c + 1).clearContent();
+  }
 }
 
 function json_(obj) {
