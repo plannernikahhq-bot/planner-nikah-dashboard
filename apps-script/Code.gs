@@ -1,6 +1,6 @@
 /** @OnlyCurrentDoc */
 /**
- * Planner Nikah A–Z — Sambungan Dashboard Web & Jemputan Digital (RSVP)
+ * Planner Nikah A–Z - Sambungan Dashboard Web & Jemputan Digital (RSVP)
  * Created by Hizami Radzi
  *
  * Skrip ini:
@@ -8,16 +8,18 @@
  *  - Membenarkan JEMPUTAN DIGITAL membaca butiran majlis dari tab "Jemputan Digital" (tanpa PIN).
  *  - Menyimpan jawapan RSVP tetamu ke tab "RSVP Online".
  *  - Membenarkan anda KEMAS KINI data dari dashboard (perlu PIN; hanya kolum input, formula tidak disentuh).
+ *  - Menambah menu "💍 Planner Nikah" dalam Google Sheet (link, semak sambungan, padam data contoh, dropdown).
  *  - Hanya fail ini sahaja yang boleh dibaca / ditulis (@OnlyCurrentDoc).
  *  - Nombor telefon tetamu TIDAK dihantar ke dashboard atau jemputan.
  *
  * JANGAN ubah kod ini. Ikut panduan "Cara Sambung Dashboard" & "Cara Guna Jemputan Digital".
  */
 
-var VERSION = '2.1';
+var VERSION = '2.3';
 var PIN_SHEET = 'Dashboard';
 var PIN_CELL = 'C13';
-var MAX_FAILS = 10;
+var MAX_FAILS = 10;        // cubaan PIN salah per peranti (15 minit)
+var MAX_FAILS_ALL = 100;   // cubaan PIN salah keseluruhan (15 minit)
 var LOCK_SECONDS = 900;
 var INVITE_SHEET = 'Jemputan Digital';
 var RSVP_SHEET = 'RSVP Online';
@@ -31,12 +33,16 @@ function doGet(e) {
     if (p.action === 'invite') return json_(inviteGet_());
     if (p.action === 'rsvp') return json_(rsvpSave_(p));
   } catch (err) {
-    return json_({ ok: false, code: 'READ_ERROR', message: String(err && err.message || err) });
+    return json_({ ok: false, code: 'READ_ERROR' }); // halaman awam: jangan dedahkan butiran ralat
   }
 
   var cache = CacheService.getScriptCache();
-  var fails = Number(cache.get('fails') || 0);
-  if (fails >= MAX_FAILS) return json_({ ok: false, code: 'LOCKED' });
+  // Kiraan PIN salah dibuat per peranti (id dari Vercel), supaya orang lain tidak boleh mengunci anda.
+  var cid = String(p.cid || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  var failKey = cid ? 'fails_' + cid : 'fails';
+  if (Number(cache.get(failKey) || 0) >= MAX_FAILS || Number(cache.get('fails_all') || 0) >= MAX_FAILS_ALL) {
+    return json_({ ok: false, code: 'LOCKED' });
+  }
 
   var ss = SpreadsheetApp.getActive();
   var pinSheet = ss.getSheetByName(PIN_SHEET);
@@ -44,13 +50,20 @@ function doGet(e) {
   if (pin.length < 6) return json_({ ok: false, code: 'PIN_NOT_SET' });
 
   if (String(p.pin || '').trim() !== pin) {
-    cache.put('fails', String(fails + 1), LOCK_SECONDS);
+    var fl = LockService.getScriptLock();
+    if (fl.tryLock(5000)) {
+      try {
+        cache.put(failKey, String(Number(cache.get(failKey) || 0) + 1), LOCK_SECONDS);
+        cache.put('fails_all', String(Number(cache.get('fails_all') || 0) + 1), LOCK_SECONDS);
+      } finally { fl.releaseLock(); }
+    }
     return json_({ ok: false, code: 'WRONG_PIN' });
   }
 
   try {
     if (p.action === 'edit') return json_(editGet_(ss, p.t));
     if (p.action === 'save') return json_(editSave_(ss, p));
+    if (p.site) rememberSite_(p.site);
     return json_({ ok: true, version: VERSION, updated: new Date().toISOString(), data: collect_(ss) });
   } catch (err) {
     return json_({ ok: false, code: 'READ_ERROR', message: String(err && err.message || err) });
@@ -67,7 +80,7 @@ function ujiSambungan() {
 }
 
 // =========================================================================
-// JEMPUTAN DIGITAL (awam, tanpa PIN — hanya maklumat jemputan)
+// JEMPUTAN DIGITAL (awam, tanpa PIN - hanya maklumat jemputan)
 // =========================================================================
 
 var REKA = { 'Lavender Kasih': 'lavender', 'Ivory Emas': 'ivory', 'Gerbang Nur': 'gerbang', 'Zamrud Songket': 'zamrud' };
@@ -134,13 +147,16 @@ function readInviteConfig_(ss, tz) {
     if (!key) continue;
     var v = vals[i][1];
     // Tarikh -> yyyy-MM-dd; lain-lain (termasuk masa) -> teks seperti dipapar dalam sel.
-    cfg[key] = (v instanceof Date && v.getFullYear() >= 1901) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(shown[i][1]).trim();
+    var txt = String(shown[i][1]).trim();
+    var dm = txt.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/); // tarikh ditaip sebagai teks, cth 30/11/2026
+    cfg[key] = (v instanceof Date && v.getFullYear() >= 1901) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd')
+      : dm ? dm[3] + '-' + ('0' + dm[2]).slice(-2) + '-' + ('0' + dm[1]).slice(-2) : txt;
   }
   return cfg;
 }
 
 // =========================================================================
-// RSVP (awam — dengan had & pengesahan)
+// RSVP (awam - dengan had & pengesahan)
 // =========================================================================
 
 function rsvpSave_(p) {
@@ -172,9 +188,12 @@ function rsvpSave_(p) {
   var mine = Number(cache.get(who) || 0);
   if (mine >= 3) return { ok: false, code: 'TOO_MANY' };
 
+  // Id unik setiap borang: jika tetamu tekan Hantar semula (cth. internet lambat), jawapan tidak digandakan.
+  var rid = String(p.rid || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32);
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
+    if (rid && cache.get('rid_' + rid)) return { ok: true };
     var sh = ss.getSheetByName(RSVP_SHEET);
     if (!sh) return { ok: false, code: 'NO_RSVP_TAB' };
     if (sh.getLastRow() > RSVP_MAX_ROWS) return { ok: false, code: 'FULL' };
@@ -182,9 +201,14 @@ function rsvpSave_(p) {
     // Cari baris kosong pertama (templat sudah berformat hingga baris 500).
     var names = sh.getRange(RSVP_HEAD_ROW + 1, 2, Math.max(1, sh.getMaxRows() - RSVP_HEAD_ROW), 1).getValues();
     for (var i = 0; i < names.length; i++) { if (names[i][0] === '') { row = RSVP_HEAD_ROW + 1 + i; break; } }
+    if (row > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), 200);
+    // Ucapan yang mengandungi pautan / nombor panjang (cth no. akaun) tidak dipapar sehingga anda tukar ke "Ya".
+    var papar = /(https?:|www\.|\.(com|my|net|org|ly|me)\b|\d[\d\s.\-]{6,}\d)/i.test(ucapan) ? 'Tidak' : 'Ya';
     sh.getRange(row, 1, 1, 8).setValues([[
-      Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), nama, tel, hadir, pax, slot, ucapan, 'Ya'
+      Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), nama, tel, hadir, pax, slot, ucapan, papar
     ]]);
+    SpreadsheetApp.flush();
+    if (rid) cache.put('rid_' + rid, '1', 21600);
   } finally {
     lock.releaseLock();
   }
@@ -195,9 +219,12 @@ function rsvpSave_(p) {
 
 /** Buang aksara kawalan & elak "formula injection" dalam Google Sheet. */
 function clean_(v, max) {
-  var s = String(v || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  var s = cleanText_(v, max);
   if (/^[=+\-@]/.test(s)) s = "'" + s;
   return s;
+}
+function cleanText_(v, max) {
+  return String(v || '').replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 function safeUrl_(u) { u = String(u || '').trim(); return /^https:\/\//i.test(u) ? u : ''; }
 
@@ -337,31 +364,31 @@ var EDIT = {
     ['Nama pengantin lelaki', 'text', 'C5'], ['Nama pengantin perempuan', 'text', 'C6'],
     ['Tarikh akad nikah', 'date', 'C7'], ['Tarikh resepsi', 'date', 'C8'], ['Lokasi majlis', 'text', 'C9'],
     ['Bajet sasaran (RM)', 'num', 'C10'], ['Anggaran bilangan tetamu (pax)', 'num', 'C11'], ['Harga katering / pax (RM)', 'num', 'C12']] },
-  bajet: { label: 'Bajet', sheet: 'Bajet Utama', head: 6, key: 'Item Perbelanjaan', show: ['Kategori', 'Anggaran (RM)', 'Status'], fields: [
+  bajet: { label: 'Bajet', sheet: 'Bajet Utama', head: 6, last: 200, key: 'Item Perbelanjaan', show: ['Kategori', 'Anggaran (RM)', 'Status'], fields: [
     ['Kategori', 'list'], ['Item Perbelanjaan', 'text'], ['Pihak', 'list'], ['Anggaran (RM)', 'num'], ['Kos Sebenar (RM)', 'num'],
     ['Dibayar (RM)', 'num'], ['Status', 'list'], ['Vendor', 'text'], ['Catatan', 'text']] },
-  bayaran: { label: 'Bayaran', sheet: 'Jadual Bayaran', head: 6, key: 'Vendor', show: ['Perkara', 'Amaun (RM)', 'Status'], fields: [
+  bayaran: { label: 'Bayaran', sheet: 'Jadual Bayaran', head: 6, last: 200, key: 'Vendor', show: ['Perkara', 'Amaun (RM)', 'Status'], fields: [
     ['Vendor', 'text'], ['Perkara', 'text'], ['Peringkat Bayaran', 'list'], ['Amaun (RM)', 'num'], ['Tarikh Akhir', 'date'],
     ['Tarikh Dibayar', 'date'], ['Kaedah', 'list'], ['Status', 'list'], ['No. Resit / Catatan', 'text']] },
-  tetamu: { label: 'Tetamu', sheet: 'Senarai Tetamu', head: 6, key: 'Nama / Keluarga', show: ['Pihak', 'Bil. Dijemput (pax)', 'RSVP'], fields: [
+  tetamu: { label: 'Tetamu', sheet: 'Senarai Tetamu', head: 6, last: 200, key: 'Nama / Keluarga', show: ['Pihak', 'Bil. Dijemput (pax)', 'RSVP'], fields: [
     ['Nama / Keluarga', 'text'], ['Pihak', 'list'], ['Kumpulan', 'list'], ['Bil. Dijemput (pax)', 'num'], ['Kad Dihantar?', 'list'],
     ['RSVP', 'list'], ['Pax Sah Hadir', 'num'], ['Majlis', 'list'], ['No. Meja', 'text'], ['Catatan', 'text']] },
-  checklist: { label: 'Checklist', sheet: 'Checklist A-Z', head: 6, key: 'Tugasan', show: ['Tempoh', 'Status'], ro: ['Tarikh Sasaran'], fields: [
+  checklist: { label: 'Checklist', sheet: 'Checklist A-Z', head: 6, last: 200, key: 'Tugasan', show: ['Tempoh', 'Status'], ro: ['Tarikh Sasaran'], fields: [
     ['Tempoh', 'list'], ['Tugasan', 'text'], ['PIC', 'text'], ['Status', 'list'], ['Tarikh Siap', 'date'], ['Catatan', 'text']] },
-  urusan: { label: 'Urusan Nikah', sheet: 'Urusan Nikah', head: 6, key: 'Dokumen / Urusan', show: ['Pihak', 'Status'], fields: [
+  urusan: { label: 'Urusan Nikah', sheet: 'Urusan Nikah', head: 6, last: 60, key: 'Dokumen / Urusan', show: ['Pihak', 'Status'], fields: [
     ['Dokumen / Urusan', 'text'], ['Pihak', 'list'], ['Tempat / Pejabat', 'text'], ['Tarikh Sasaran', 'date'], ['Status', 'list'], ['Catatan', 'text']] },
-  vendor: { label: 'Vendor', sheet: 'Vendor', head: 6, key: 'Nama Vendor', show: ['Kategori', 'Sebut Harga (RM)', 'Keputusan'], fields: [
+  vendor: { label: 'Vendor', sheet: 'Vendor', head: 6, last: 200, key: 'Nama Vendor', show: ['Kategori', 'Sebut Harga (RM)', 'Keputusan'], fields: [
     ['Kategori', 'list'], ['Nama Vendor', 'text'], ['PIC', 'text'], ['No. Telefon', 'text'], ['IG / Website', 'text'],
     ['Pakej / Apa Termasuk', 'text'], ['Sebut Harga (RM)', 'num'], ['Rating (1-5)', 'num', 1, 5], ['Keputusan', 'list'],
     ['Tarikh Tempah', 'date'], ['Catatan', 'text']] },
-  hantaran: { label: 'Hantaran', sheet: 'Hantaran', head: 6, key: 'Isi Hantaran', show: ['Arah Hantaran', 'Status'], ro: ['Jumlah (RM)'], fields: [
+  hantaran: { label: 'Hantaran', sheet: 'Hantaran', head: 6, last: 60, key: 'Isi Hantaran', show: ['Arah Hantaran', 'Status'], ro: ['Jumlah (RM)'], fields: [
     ['Arah Hantaran', 'list'], ['No. Dulang', 'num'], ['Isi Hantaran', 'text'], ['Kos Barang (RM)', 'num'], ['Kos Gubah (RM)', 'num'],
     ['Status', 'list'], ['Penggubah / PIC', 'text'], ['Catatan', 'text']] },
-  tentatif: { label: 'Tentatif', sheet: 'Tentatif Majlis', head: 6, key: 'Aturcara', show: ['Majlis', 'Masa Mula'], fields: [
+  tentatif: { label: 'Tentatif', sheet: 'Tentatif Majlis', head: 6, last: 100, key: 'Aturcara', show: ['Majlis', 'Masa Mula'], fields: [
     ['Majlis', 'list'], ['Masa Mula', 'time'], ['Masa Tamat', 'time'], ['Aturcara', 'text'], ['Lokasi', 'text'], ['PIC', 'text'], ['Catatan', 'text']] },
-  ajk: { label: 'AJK', sheet: 'AJK & Tugasan', head: 6, key: 'Unit / Tugas', show: ['Nama AJK', 'Majlis'], fields: [
+  ajk: { label: 'AJK', sheet: 'AJK & Tugasan', head: 6, last: 100, key: 'Unit / Tugas', show: ['Nama AJK', 'Majlis'], fields: [
     ['Unit / Tugas', 'text'], ['Nama AJK', 'text'], ['No. Telefon', 'text'], ['Majlis', 'list'], ['Masa Bertugas', 'text'], ['Catatan', 'text']] },
-  salam: { label: 'Duit Salam', sheet: 'Duit Salam', head: 6, key: 'Nama Tetamu', show: ['Pihak', 'Amaun (RM)', 'Terima Kasih Dihantar?'], fields: [
+  salam: { label: 'Duit Salam', sheet: 'Duit Salam', head: 6, last: 500, key: 'Nama Tetamu', show: ['Pihak', 'Amaun (RM)', 'Terima Kasih Dihantar?'], fields: [
     ['Nama Tetamu', 'text'], ['Hubungan', 'text'], ['Pihak', 'list'], ['Amaun (RM)', 'num'], ['Jenis', 'list'], ['Hadiah (barang)', 'text'],
     ['Terima Kasih Dihantar?', 'list'], ['Catatan', 'text']] },
   simpanan: { label: 'Simpanan', sheet: 'Simpanan', head: 21, key: 'Bulan', add: false, clear: false,
@@ -405,8 +432,19 @@ function editVal_(v, shown, type, tz) {
   return String(shown);
 }
 
+function editCfg_(t) { return Object.prototype.hasOwnProperty.call(EDIT, String(t)) ? EDIT[t] : null; }
+
+/** Cap jari kolum input satu baris - untuk kesan jika baris telah diubah / diisih sejak dibaca. */
+function rowHash_(shownRow, cols) {
+  var s = cols.map(function (c) { return String(shownRow[c - 1]); }).join('\u0001');
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, s, Utilities.Charset.UTF_8)).slice(0, 16);
+}
+function hashCols_(cfg, col) {
+  return cfg.fields.map(function (f) { return col[f[0]]; }).filter(Boolean);
+}
+
 function editGet_(ss, t) {
-  var cfg = EDIT[t];
+  var cfg = editCfg_(t);
   if (!cfg) return { ok: false, code: 'BAD_TABLE' };
   var sh = ss.getSheetByName(cfg.sheet);
   if (!sh) return { ok: false, code: 'NO_SHEET', message: cfg.sheet };
@@ -440,14 +478,14 @@ function editGet_(ss, t) {
   if (last >= first) {
     var n = last - first + 1, lastCol = sh.getLastColumn();
     var rg = sh.getRange(first, 1, n, lastCol), vals = rg.getValues(), shown = rg.getDisplayValues();
-    var kc = col[cfg.key] - 1;
+    var kc = col[cfg.key] - 1, hc = hashCols_(cfg, col);
     for (var i = 0; i < n; i++) {
       var k = String(shown[i][kc]).trim();
       if (!k) continue;
       var v = {};
       fields.forEach(function (f) { var c = col[f[0]] - 1; v[f[0]] = editVal_(vals[i][c], shown[i][c], f[1], tz); });
       base.ro.forEach(function (h) { v[h] = String(shown[i][col[h] - 1]); });
-      base.rows.push({ r: first + i, k: k, v: v });
+      base.rows.push({ r: first + i, k: k, h: rowHash_(shown[i], hc), v: v });
     }
   }
   return base;
@@ -474,11 +512,12 @@ function editConvert_(raw, f, opts, tz) {
   if (type === 'list' && opts && opts.length) {
     return opts.indexOf(s) >= 0 ? { v: s } : { err: f[0] };
   }
-  return { v: clean_(s, 200) };
+  // Teks disimpan sebagai teks (awalan ') supaya 0123... / 05 / 1/2 tidak ditukar jadi nombor / tarikh.
+  return { v: "'" + cleanText_(s, 200) };
 }
 
 function editSave_(ss, p) {
-  var cfg = EDIT[p.t];
+  var cfg = editCfg_(p.t);
   if (!cfg) return { ok: false, code: 'BAD_TABLE' };
   var op = String(p.op || '');
   if (['update', 'add', 'clear'].indexOf(op) < 0) return { ok: false, code: 'INVALID' };
@@ -517,7 +556,9 @@ function editSave_(ss, p) {
     var row;
     if (op === 'add') {
       if (cfg.add === false) return { ok: false, code: 'INVALID' };
-      var keys = sh.getRange(first, kc, maxRow - first + 1, 1).getDisplayValues();
+      var lastRow = Math.min(maxRow, cfg.last || maxRow);
+      if (lastRow < first) return { ok: false, code: 'FULL' };
+      var keys = sh.getRange(first, kc, lastRow - first + 1, 1).getDisplayValues();
       for (var i = 0; i < keys.length; i++) { if (!String(keys[i][0]).trim()) { row = first + i; break; } }
       if (!row) return { ok: false, code: 'FULL' };
     } else {
@@ -525,6 +566,10 @@ function editSave_(ss, p) {
       if (!(row >= first && row <= maxRow)) return { ok: false, code: 'INVALID' };
       var cur = String(sh.getRange(row, kc).getDisplayValue()).trim();
       if (!cur || cur !== String(p.k || '').trim()) return { ok: false, code: 'CHANGED' };
+      if (p.h) {
+        var hc = hashCols_(cfg, col), wmax = Math.max.apply(null, hc);
+        if (rowHash_(sh.getRange(row, 1, 1, wmax).getDisplayValues()[0], hc) !== String(p.h)) return { ok: false, code: 'CHANGED' };
+      }
     }
 
     if (op === 'clear') {
@@ -595,6 +640,7 @@ function setupDropdown() {
   var rc = vs ? editCols_(vs, { head: 6 })['Rating (1-5)'] : 0;
   if (rc) vs.getRange(7, rc, Math.min(200, vs.getMaxRows()) - 6, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireNumberBetween(1, 5).setAllowInvalid(false).build());
   Logger.log('Dropdown dipasang: ' + done.length + (miss.length ? ' | Tidak dijumpai: ' + miss.join(', ') : ''));
+  return done.length;
 }
 
 /** Kosongkan semua sel input (bukan formula) dalam satu baris, dalam lebar jadual sahaja. */
@@ -630,7 +676,7 @@ function setupJemputan() {
     sh.setTabColor(ROSE).setHiddenGridlines(true);
     sh.getRange('A1:C2').setBackground(ROSE_L);
     sh.getRange('A1').setValue('💌 Jemputan Digital & RSVP').setFontSize(18).setFontWeight('bold').setFontColor(ROSE);
-    sh.getRange('A2').setValue('Isi kotak kuning. Jemputan anda di: link-vercel-anda/jemputan  ·  Created by Hizami Radzi')
+    sh.getRange('A2').setValue('Isi kotak kuning. Link jemputan: menu 💍 Planner Nikah → 🔗 Link dashboard & jemputan  ·  Created by Hizami Radzi')
       .setFontStyle('italic').setFontColor(MUTED);
     sh.setRowHeight(1, 34);
     var dash = "Dashboard!";
@@ -660,17 +706,17 @@ function setupJemputan() {
       ['h', '⑤ RSVP'],
       ['rsvpBuka', 'Buka RSVP', 'Ya', '', ['Ya', 'Tidak']],
       ['rsvpTutup', 'Tarikh tutup RSVP', '=IF(' + dash + 'C8="","",' + dash + 'C8-14)', 'Auto 14 hari sebelum majlis. Boleh tulis ganti.'],
-      ['maxPax', 'Maksimum pax setiap jemputan', 5, 'Had 1–20'],
+      ['maxPax', 'Maksimum pax setiap jemputan', 5, 'Had 1 hingga 20'],
       ['slot', 'Slot masa (pilihan)', '', 'Asingkan dengan koma, cth: 11:00 AM - 1:00 PM, 1:00 PM - 4:00 PM'],
       ['paparUcapan', 'Papar ucapan tetamu di jemputan', 'Ya', 'Sorok ucapan tertentu di tab RSVP Online (kolum Papar Ucapan? = Tidak)', ['Ya', 'Tidak']],
       ['h', '⑥ HUBUNGI & SALAM KAUT'],
-      ['wakil1', 'Wakil 1 — nama', '', 'cth. Pak Long Hassan'],
-      ['tel1', 'Wakil 1 — no. WhatsApp', '', 'cth. 60123456789'],
-      ['wakil2', 'Wakil 2 — nama', '', ''],
-      ['tel2', 'Wakil 2 — no. WhatsApp', '', ''],
-      ['bank', 'Salam kaut — nama bank', '', 'Kosongkan jika tidak mahu papar'],
-      ['akaun', 'Salam kaut — no. akaun', '', ''],
-      ['namaAkaun', 'Salam kaut — nama pemegang akaun', '', ''],
+      ['wakil1', 'Wakil 1: nama', '', 'cth. Pak Long Hassan'],
+      ['tel1', 'Wakil 1: no. WhatsApp', '', 'cth. 60123456789'],
+      ['wakil2', 'Wakil 2: nama', '', ''],
+      ['tel2', 'Wakil 2: no. WhatsApp', '', ''],
+      ['bank', 'Salam kaut: nama bank', '', 'Kosongkan jika tidak mahu papar'],
+      ['akaun', 'Salam kaut: no. akaun', '', ''],
+      ['namaAkaun', 'Salam kaut: nama pemegang akaun', '', ''],
       ['h', '⑦ DOA & PENUTUP'],
       ['doaArab', 'Doa (Arab)', 'بَارَكَ اللهُ لَكُمَا وَبَارَكَ عَلَيْكُمَا وَجَمَعَ بَيْنَكُمَا فِي خَيْرٍ', ''],
       ['doaMaksud', 'Maksud doa', 'Semoga Allah memberkati kamu berdua, melimpahkan keberkatan ke atas kamu dan menghimpunkan kamu berdua dalam kebaikan.', ''],
@@ -764,4 +810,190 @@ function setupJemputan() {
     try { ss.setActiveSheet(ss.getSheetByName(RSVP_SHEET)); ss.moveActiveSheet(ss.getSheetByName(INVITE_SHEET).getIndex() + 1); } catch (e) { /* susunan tab tidak kritikal */ }
   }
   ss.setActiveSheet(ss.getSheetByName(INVITE_SHEET));
+}
+
+// =========================================================================
+// MENU "💍 Planner Nikah" (dalam Google Sheet, untuk pengguna; tiada kod perlu dibuka)
+// =========================================================================
+
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('💍 Planner Nikah')
+    .addItem('🔗 Link dashboard & jemputan saya', 'menuLink')
+    .addItem('✅ Semak sambungan dashboard', 'menuSemak')
+    .addSeparator()
+    .addItem('🧹 Padam data contoh', 'menuPadamContoh')
+    .addItem('✏️ Ubah pilihan dropdown', 'menuUbahDropdown')
+    .addItem('✔️ Siap ubah dropdown', 'menuSiapDropdown')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('🔧 Baiki')
+      .addItem('Pasang semula semua dropdown', 'menuBaikiDropdown')
+      .addItem('Pulihkan tab Jemputan Digital & RSVP Online', 'menuPulihJemputan'))
+    .addToUi();
+}
+
+/** Dashboard menghantar domain lamannya bila dibuka dengan PIN betul; disimpan untuk menu "Link". */
+function rememberSite_(s) {
+  s = String(s || '').toLowerCase().replace(/[^a-z0-9.-]/g, '').slice(0, 100);
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s)) return;
+  var dp = PropertiesService.getDocumentProperties();
+  if (dp.getProperty('siteUrl') !== s) dp.setProperty('siteUrl', s);
+}
+
+var VERCEL_CLONE = 'https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fplannernikahhq-bot%2Fplanner-nikah-dashboard' +
+  '&env=APPS_SCRIPT_URL&project-name=dashboard-nikah&repository-name=dashboard-nikah';
+
+function webAppUrl_() {
+  try {
+    var s = ScriptApp.getService();
+    var u = s.isEnabled() ? String(s.getUrl() || '') : '';
+    return /\/exec$/.test(u) ? u : '';
+  } catch (e) { return ''; }
+}
+
+function esc_(s) {
+  return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+}
+
+function menuLink(ui) {
+  ui = ui && ui.alert ? ui : SpreadsheetApp.getUi();
+  ui.showModalDialog(HtmlService.createHtmlOutput(linkHtml_()).setWidth(440).setHeight(470), 'Link Planner Nikah anda');
+}
+
+function linkHtml_() {
+  var site = PropertiesService.getDocumentProperties().getProperty('siteUrl') || '';
+  var url = webAppUrl_();
+  var box = function (label, value, note) {
+    return '<div class="b"><div class="l">' + label + '</div>' +
+      (value ? '<input readonly value="' + esc_(value) + '" onclick="this.select()">' +
+        '<div class="r"><button onclick="cp(this)">Salin</button>' +
+        (value.indexOf('script.google.com') < 0 ? ' <a href="' + esc_(value) + '" target="_blank">Buka ↗</a>' : '') + '</div>'
+        : '<div class="n">' + note + '</div>') + '</div>';
+  };
+  var html =
+    '<style>body{font:14px Arial,sans-serif;color:#333;margin:0}.b{margin:0 0 14px}.l{font-weight:bold;margin-bottom:4px}' +
+    'input{width:100%;box-sizing:border-box;padding:7px;border:1px solid #ccc;border-radius:6px;font-size:13px}' +
+    '.r{margin-top:6px}button{background:#A8707B;color:#fff;border:0;border-radius:6px;padding:6px 14px;cursor:pointer}' +
+    'a{color:#1F4FBF;margin-left:8px}.n{color:#777;font-size:13px;line-height:1.45}small{color:#888}' +
+    '.nx{background:#FFF6D5;border-radius:8px;padding:10px}a.go{display:inline-block;margin:6px 0 0;background:#000;color:#fff;padding:7px 14px;border-radius:6px;text-decoration:none}</style>' +
+    box('📱 Dashboard saya', site ? 'https://' + site : '',
+      'Belum ada. Ikut PDF <b>Cara Sambung Dashboard</b> (Fasa 2). Selepas anda buka dashboard dengan PIN sekali, link akan muncul di sini.') +
+    box('💌 Link jemputan (kongsi di WhatsApp)', site ? 'https://' + site + '/jemputan' : '',
+      'Muncul selepas dashboard disambung.') +
+    box('🔑 Web app URL (untuk tampal di Vercel sahaja)', url,
+      'Belum deploy. Ikut PDF Cara Sambung Dashboard, Fasa 1 langkah 3.') +
+    (url && !site ? '<div class="b nx"><div class="l">🚀 Langkah seterusnya</div><div class="n">Salin Web app URL di atas, kemudian buka halaman pemasangan dan tampal dalam kotak <b>APPS_SCRIPT_URL</b>.</div>' +
+      '<div class="r"><a class="go" href="' + VERCEL_CLONE + '" target="_blank">Buka halaman pemasangan ↗</a></div></div>' : '') +
+    '<small>PIN dashboard ada di tab Dashboard, sel C13. Jangan kongsi PIN & Web app URL di tempat awam.</small>' +
+    '<script>function cp(b){var i=b.parentNode.previousSibling;i.select();document.execCommand("copy");b.textContent="Disalin ✓";setTimeout(function(){b.textContent="Salin"},1500)}</script>';
+  return html;
+}
+
+function menuSemak(ui) {
+  ui = ui && ui.alert ? ui : SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActive(), out = [], ok = true;
+  var pin = String(ss.getSheetByName(PIN_SHEET) ? ss.getSheetByName(PIN_SHEET).getRange(PIN_CELL).getDisplayValue() : '').trim();
+  if (pin.length >= 6) out.push('✅ PIN dashboard sudah diisi (tab Dashboard, sel C13).');
+  else { ok = false; out.push('❌ PIN belum diisi. Tab Dashboard → sel C13 → taip PIN sekurang-kurangnya 6 aksara (cth. mawar2027).'); }
+  var tabs = ['Dashboard', 'Bajet Utama', 'Jadual Bayaran', 'Vendor', 'Senarai Tetamu', 'Checklist A-Z', 'Urusan Nikah', 'Hantaran',
+    'Tentatif Majlis', 'AJK & Tugasan', 'Duit Salam', 'Simpanan', INVITE_SHEET, RSVP_SHEET];
+  var missing = tabs.filter(function (t) { return !ss.getSheetByName(t); });
+  if (missing.length) { ok = false; out.push('❌ Tab tidak dijumpai: ' + missing.join(', ') + '. Jangan tukar nama tab. Tukar semula nama asal.'); }
+  else {
+    try {
+      var d = collect_(ss);
+      out.push('✅ Data boleh dibaca: ' + d.bajet.length + ' item bajet, ' + d.tetamu.length + ' tetamu, ' + d.rsvpOnline.length + ' RSVP online.');
+    } catch (e) { ok = false; out.push('❌ Data tidak dapat dibaca (' + e.message + '). Pastikan tajuk kolum tidak diubah.'); }
+  }
+  if (webAppUrl_()) out.push('✅ Skrip sudah di-deploy sebagai Web app.');
+  else { ok = false; out.push('❌ Skrip belum di-deploy. Ikut PDF Cara Sambung Dashboard, Fasa 1 langkah 3 hingga 5.'); }
+  var site = PropertiesService.getDocumentProperties().getProperty('siteUrl');
+  if (site) out.push('✅ Dashboard pernah dibuka di: ' + site);
+  else out.push('ℹ️ Dashboard belum pernah dibuka dengan PIN. Selepas Fasa 2 (Vercel), buka dashboard & masukkan PIN.');
+  ui.alert(ok ? 'Semua OK 👍' : 'Ada perkara perlu dibetulkan', out.join('\n\n'), ui.ButtonSet.OK);
+}
+
+// Data contoh yang disertakan dalam template (hanya baris ini yang dipadam; data anda tidak disentuh).
+var SAMPLE = {
+  'Senarai Tetamu': { key: 'Nama / Keluarga', values: ['Keluarga Pak Long Hassan', 'Rakan pejabat - Siti'] },
+  'Vendor': { key: 'Nama Vendor', values: ['Katering Contoh A', 'Katering Contoh B'] },
+  'Jadual Bayaran': { key: 'Vendor', values: ['Dewan Seri Mawar', 'Katering Contoh B'], also: { 'Perkara': ['Sewa dewan', 'Katering resepsi'] } },
+  'Duit Salam': { key: 'Nama Tetamu', values: ['Contoh: Mak Ngah Salmah'] }
+};
+var SAMPLE_INVITE = {
+  penuhP: 'Nur Aisyah binti Ahmad', penuhL: 'Muhammad Ahmad bin Kamal',
+  tuanRumah: 'Tuan Haji Ahmad bin Ismail & Puan Hajah Salmah binti Hassan', alamat: 'No. 1, Jalan Mawar 1, 40000 Shah Alam, Selangor'
+};
+
+function menuPadamContoh(ui) {
+  ui = ui && ui.alert ? ui : SpreadsheetApp.getUi();
+  var ans = ui.alert('Padam data contoh?',
+    'Ini akan memadam:\n• 2 tetamu, 2 vendor, 3 bayaran & 1 duit salam contoh\n• Nama pengantin & lokasi contoh (Ahmad, Aisyah, Dewan Seri Mawar)\n' +
+    '• Nama penuh, tuan rumah & alamat contoh dalam tab Jemputan Digital\n\nData yang anda isi sendiri tidak disentuh. Item bajet, checklist, hantaran & tentatif dikekalkan sebagai panduan.',
+    ui.ButtonSet.YES_NO);
+  if (ans !== ui.Button.YES) return;
+  var ss = SpreadsheetApp.getActive(), n = 0;
+  Object.keys(SAMPLE).forEach(function (name) {
+    var sh = ss.getSheetByName(name), cfg = SAMPLE[name];
+    if (!sh || sh.getLastRow() < 7) return;
+    var col = editCols_(sh, { head: 6 }), kc = col[cfg.key];
+    if (!kc) return;
+    var last = sh.getLastRow(), keys = sh.getRange(7, kc, last - 6, 1).getDisplayValues();
+    var extra = cfg.also ? Object.keys(cfg.also)[0] : null, ec = extra ? col[extra] : 0;
+    var ev = ec ? sh.getRange(7, ec, last - 6, 1).getDisplayValues() : null;
+    for (var i = 0; i < keys.length; i++) {
+      var k = String(keys[i][0]).trim();
+      if (cfg.values.indexOf(k) < 0) continue;
+      if (ec && cfg.also[extra].indexOf(String(ev[i][0]).trim()) < 0) continue;
+      clearRow_(sh, 7 + i, col); n++;
+    }
+  });
+  var dash = ss.getSheetByName('Dashboard');
+  if (dash) [['C5', 'Ahmad'], ['C6', 'Aisyah'], ['C9', 'Dewan Seri Mawar']].forEach(function (x) {
+    var c = dash.getRange(x[0]); if (!c.getFormula() && String(c.getValue()).trim() === x[1]) { c.clearContent(); n++; }
+  });
+  var inv = ss.getSheetByName(INVITE_SHEET);
+  if (inv && inv.getLastRow() >= 4) {
+    var v = inv.getRange(1, 1, inv.getLastRow(), 4).getValues();
+    for (var r = 0; r < v.length; r++) {
+      var key = String(v[r][3]).trim();
+      if (SAMPLE_INVITE[key] && String(v[r][1]).trim() === SAMPLE_INVITE[key]) { inv.getRange(r + 1, 2).clearContent(); n++; }
+    }
+  }
+  ui.alert('Siap 👍', n ? n + ' data contoh dipadam.\n\nLangkah seterusnya: isi nama pengantin, tarikh & lokasi anda di tab Dashboard (kotak kuning).'
+    : 'Tiada data contoh dijumpai. Mungkin sudah dipadam sebelum ini.', ui.ButtonSet.OK);
+}
+
+function menuUbahDropdown(ui) {
+  ui = ui && ui.alert ? ui : SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName('Senarai');
+  if (!sh) { ui.alert('Tab "Senarai" tidak dijumpai.'); return; }
+  sh.showSheet(); ss.setActiveSheet(sh);
+  ui.alert('Ubah pilihan dropdown',
+    'Tab "Senarai" dibuka. Setiap kolum ialah satu dropdown (tajuk di baris 1).\n\n' +
+    '1. Tambah pilihan baharu di bawah senarai dalam kolum berkenaan.\n' +
+    '2. Jangan tukar atau padam pilihan sedia ada (dashboard bergantung padanya).\n' +
+    '3. Bila siap, klik menu 💍 Planner Nikah → ✔️ Siap ubah dropdown.', ui.ButtonSet.OK);
+}
+
+function menuSiapDropdown(ui) {
+  ui = ui && ui.alert ? ui : SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActive(), n = setupDropdown(), sh = ss.getSheetByName('Senarai');
+  if (sh && ss.getSheets().length > 1) {
+    if (ss.getActiveSheet().getName() === 'Senarai') ss.setActiveSheet(ss.getSheetByName('Dashboard') || ss.getSheets()[0]);
+    sh.hideSheet();
+  }
+  ui.alert('Siap 👍', 'Dropdown dikemas kini (' + n + ' kolum). Tab "Senarai" disorok semula.', ui.ButtonSet.OK);
+}
+
+function menuBaikiDropdown(ui) {
+  ui = ui && ui.alert ? ui : SpreadsheetApp.getUi();
+  var n = setupDropdown();
+  ui.alert('Siap 👍', n + ' kolum dropdown dipasang semula.', ui.ButtonSet.OK);
+}
+
+function menuPulihJemputan(ui) {
+  ui = ui && ui.alert ? ui : SpreadsheetApp.getUi();
+  setupJemputan();
+  ui.alert('Siap 👍', 'Tab "Jemputan Digital" & "RSVP Online" diperiksa. Tab yang hilang telah dicipta semula (tab sedia ada tidak diubah).', ui.ButtonSet.OK);
 }
