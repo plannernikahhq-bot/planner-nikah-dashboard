@@ -1,5 +1,5 @@
-// Planner Nikah A–Z — terima RSVP tetamu dan hantar ke Google Sheet (tab "RSVP Online").
-const { callScript, readBody } = require('./_lib');
+// Planner Nikah A–Z - terima RSVP tetamu dan hantar ke Google Sheet (tab "RSVP Online").
+const { callScript, readBody, limited } = require('./_lib');
 
 const hits = new Map(); // had ringkas per IP (per instance)
 
@@ -8,12 +8,10 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ ok: false, code: 'METHOD' });
 
-  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'x';
-  const now = Date.now();
-  const h = (hits.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
-  if (h.length >= 8) return res.status(200).json({ ok: false, code: 'TOO_MANY' });
-  h.push(now); hits.set(ip, h);
-  if (hits.size > 5000) hits.clear();
+  // Laman demo "baca sahaja": RSVP tidak disimpan.
+  if (process.env.READ_ONLY === '1') return res.status(200).json({ ok: false, code: 'READ_ONLY' });
+  // Had per IP agak longgar kerana ramai pengguna telefon berkongsi IP yang sama.
+  if (limited(hits, req, 20, 10 * 60 * 1000)) return res.status(200).json({ ok: false, code: 'TOO_MANY' });
 
   const b = readBody(req);
   // Perangkap bot: medan tersembunyi mesti kosong & borang tidak dihantar terlalu cepat.
@@ -31,7 +29,8 @@ module.exports = async (req, res) => {
     action: 'rsvp', nama, hadir, pax: String(hadir === 'Hadir' ? pax : 0),
     tel: String(b.tel || '').replace(/[^\d+]/g, '').slice(0, 16),
     slot: String(b.slot || '').slice(0, 60),
-    ucapan: String(b.ucapan || '').slice(0, 300)
-  });
+    ucapan: String(b.ucapan || '').slice(0, 300),
+    rid: String(b.rid || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 32)
+  }, { retry: false });
   return res.status(200).json(out);
 };

@@ -1,4 +1,4 @@
-// Planner Nikah A–Z — hidang halaman jemputan dengan pautan gambar pratonton (WhatsApp) yang lengkap.
+// Planner Nikah A–Z - hidang halaman jemputan dengan pautan gambar pratonton (WhatsApp) yang lengkap.
 const fs = require('fs');
 const path = require('path');
 
