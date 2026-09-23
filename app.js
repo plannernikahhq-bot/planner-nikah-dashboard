@@ -1,4 +1,4 @@
-/* Planner Nikah A–Z — Dashboard Web · Created by Hizami Radzi */
+/* Planner Nikah A–Z - Dashboard Web · Created by Hizami Radzi */
 (function () {
   'use strict';
 
@@ -24,8 +24,8 @@
     return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
   }
   function iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  function fmtD(s) { var d = parseD(s); return d ? d.getDate() + ' ' + BULAN[d.getMonth()] + ' ' + d.getFullYear() : '—'; }
-  function fmtDs(s) { var d = parseD(s); return d ? d.getDate() + ' ' + BULAN[d.getMonth()] : '—'; }
+  function fmtD(s) { var d = parseD(s); return d ? d.getDate() + ' ' + BULAN[d.getMonth()] + ' ' + d.getFullYear() : '-'; }
+  function fmtDs(s) { var d = parseD(s); return d ? d.getDate() + ' ' + BULAN[d.getMonth()] : '-'; }
   function today() { var t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate()); }
   function daysTo(s) { var d = parseD(s); return d ? Math.round((d - today()) / 86400000) : null; }
   function ratio(a, b) { return b > 0 ? Math.max(0, Math.min(1, a / b)) : 0; }
@@ -52,7 +52,7 @@
   var MAJLIS = ['Merisik / Tunang', 'Akad Nikah', 'Resepsi Pihak Perempuan', 'Resepsi Pihak Lelaki'];
 
   // ---------------------------------------------------------------- state
-  var DATA = null, MODE = 'live', LAST = null, PIN = '', VIEW = 'utama', F = { bayar: 'datang', tetamu: 'Belum Jawab', q: '' };
+  var DATA = null, MODE = 'live', LAST = null, PIN = '', RO = false, SITE = location.origin, VIEW = 'utama', F = { bayar: 'datang', tetamu: 'Belum Jawab', q: '' };
 
   // ---------------------------------------------------------------- data
   function fetchData(pin) {
@@ -60,7 +60,7 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: pin || '' })
     }).then(function (r) {
       var ct = r.headers.get('content-type') || '';
-      if (ct.indexOf('json') < 0) return { ok: false, code: 'NOT_CONFIGURED' };
+      if (ct.indexOf('json') < 0) return { ok: false, code: r.status === 404 ? 'NOT_CONFIGURED' : 'GOOGLE_BUSY' };
       return r.json();
     }).catch(function () {
       return { ok: false, code: location.protocol === 'file:' ? 'NOT_CONFIGURED' : 'NETWORK' };
@@ -69,18 +69,22 @@
 
   function handle(res, fromForm, hadPin) {
     if (res && res.ok) {
-      DATA = res.data; MODE = 'live'; LAST = new Date(); showApp(); return;
+      DATA = res.data; MODE = 'live'; LAST = new Date(); RO = !!res.readOnly; setSite(res); saveCache(); $('#errBanner').hidden = true; showApp(); return;
     }
     var code = res && res.code;
+    // Gangguan sementara semasa dashboard sudah dibuka: kekalkan data terakhir, jangan kunci.
+    if (DATA && TRANSIENT.indexOf(code) >= 0) { setStatus(); showErr('Google Sheet lambat membalas. Memaparkan data terakhir. Cuba muat semula sebentar lagi.'); return; }
     if (code === 'NOT_CONFIGURED') { DATA = makeDemo(); MODE = 'demo'; LAST = new Date(); showApp(); return; }
     if (code === 'NO_PIN') return showLock('');
     if (code === 'WRONG_PIN') {
-      store.del('pn_pin'); PIN = '';
+      store.del('pn_pin'); store.del('pn_data'); PIN = ''; DATA = null;
       return showLock(fromForm ? 'PIN salah. Cuba lagi.' : (hadPin ? 'PIN telah berubah. Masukkan PIN baharu.' : ''));
     }
     if (code === 'LOCKED') return showLock('Terlalu banyak cubaan salah. Cuba lagi selepas 15 minit.');
     if (code === 'PIN_NOT_SET') return showLock('PIN belum ditetapkan dalam Google Sheet. Isi PIN (sekurang-kurangnya 6 aksara) di tab Dashboard, sel C13.');
     if (code === 'BAD_URL') return showLock('URL Apps Script dalam Vercel tidak betul. Ia mesti bermula dengan https://script.google.com/macros/s/ dan berakhir dengan /exec. Betulkan di Vercel → Settings → Environment Variables, kemudian Redeploy.');
+    if (code === 'GOOGLE_BUSY') return showLock('Google Sheet lambat membalas atau sibuk. Tunggu sebentar dan cuba lagi.');
+    if (code === 'TOO_MANY') return showLock('Terlalu banyak cubaan dalam masa singkat. Tunggu seminit dan cuba lagi.');
     if (code === 'SCRIPT_NOT_PUBLIC') return showLock('Google Sheet belum benarkan dashboard membaca data. Dalam Apps Script: Deploy → Manage deployments → pastikan "Who has access" = Anyone.');
     if (code === 'READ_ERROR') return showLock('Skrip tidak dapat membaca Google Sheet (' + (res.message || 'ralat') + '). Pastikan nama tab dalam template tidak diubah.');
     // NETWORK / lain-lain
@@ -88,12 +92,26 @@
     else showLock('Tidak dapat sambung. Semak internet anda dan cuba lagi.');
   }
 
+  var TRANSIENT = ['GOOGLE_BUSY', 'SCRIPT_NOT_PUBLIC', 'NETWORK', 'TOO_MANY', 'READ_ERROR', 'BUSY'];
+  // Link rasmi laman (domain utama Vercel), supaya link jemputan yang dikongsi tidak minta log masuk Vercel.
+  function setSite(res) { if (res && typeof res.site === 'string' && /^[a-z0-9.-]+$/i.test(res.site)) SITE = 'https://' + res.site; }
+
+  // Simpan data terakhir pada peranti ini (sama tempat dengan PIN) supaya dashboard terus dibuka
+  // walaupun Google Sheet lambat membalas. Dipadam bila Kunci / PIN berubah.
+  function saveCache() {
+    var persist = false; try { persist = !!localStorage.getItem('pn_pin'); } catch (e) {}
+    try { store.set('pn_data', JSON.stringify({ t: Date.now(), site: SITE, ro: RO, data: DATA }), persist); } catch (e) {}
+  }
+  function loadCache() {
+    try { var c = JSON.parse(store.get('pn_data') || 'null'); return c && c.data ? c : null; } catch (e) { return null; }
+  }
+
   function refresh() {
     if (MODE === 'demo') { DATA = makeDemo(); LAST = new Date(); render(); return; }
     var btn = $('#refreshBtn'); btn.classList.add('spin');
     fetchData(PIN).then(function (res) {
       btn.classList.remove('spin');
-      if (res.ok) { DATA = res.data; LAST = new Date(); $('#errBanner').hidden = true; render(); }
+      if (res.ok) { DATA = res.data; LAST = new Date(); setSite(res); saveCache(); $('#errBanner').hidden = true; render(); }
       else handle(res, false, true);
     });
   }
@@ -168,7 +186,7 @@
 
     var tetamu = (d.tetamu || []).map(function (x) {
       var r = x.rsvp === 'Hadir' || x.rsvp === 'Tidak Hadir' ? x.rsvp : 'Belum Jawab';
-      return { nama: x.nama, pihak: x.pihak || '—', kumpulan: x.kumpulan || 'Lain-lain', pax: n(x.pax), rsvp: r,
+      return { nama: x.nama, pihak: x.pihak || '-', kumpulan: x.kumpulan || 'Lain-lain', pax: n(x.pax), rsvp: r,
         paxHadir: n(x.paxHadir), kad: x.kad === 'Ya', majlis: x.majlis, meja: x.meja };
     });
 
@@ -268,7 +286,7 @@
     var i = M.info, d = daysTo(i.tarikhNikah);
     var chkDone = cnt(M.chk, function (x) { return x.status === 'Selesai'; });
     var big, cap;
-    if (d === null) { big = '—'; cap = 'Isi tarikh akad nikah dalam Google Sheet'; }
+    if (d === null) { big = '-'; cap = 'Isi tarikh akad nikah dalam Google Sheet'; }
     else if (d > 0) { big = d + '<small>hari lagi</small>'; cap = 'menuju akad nikah · ' + fmtD(i.tarikhNikah); }
     else if (d === 0) { big = 'Hari ini!'; cap = 'Selamat diijabkabulkan 💍'; }
     else { big = 'Selamat'; cap = 'Pengantin baru sejak ' + fmtD(i.tarikhNikah) + ' 🎉'; }
@@ -312,10 +330,19 @@
       prog('Bajet sasaran digunakan', M.T.guna, n(i.bajetSasaran), M.T.guna > n(i.bajetSasaran) ? 'red' : 'rose') +
       '</div>';
 
-    return hero + kpis +
+    // Pengguna baru: dashboard masih memaparkan data contoh template.
+    var sample = MODE === 'live' && !RO && i.lelaki === 'Ahmad' && i.perempuan === 'Aisyah';
+    var welcome = sample ? '<div class="card welcome"><h2>👋 Selamat datang!</h2>' +
+      '<p>Dashboard anda sudah bersambung ke Google Sheet, tetapi masih memaparkan <b>data contoh</b> (Ahmad &amp; Aisyah). Mula dengan 2 langkah ini:</p>' +
+      '<ol><li>Dalam Google Sheet, klik menu <b>💍 Planner Nikah → 🧹 Padam data contoh</b>.</li>' +
+      '<li>Isi nama, tarikh &amp; lokasi majlis anda di sini:</li></ol>' +
+      '<button type="button" class="btn primary" data-go="maklumat">✏️ Isi maklumat majlis</button></div>' : '';
+    var lewatNote = lewat ? '<p class="muted small" style="margin:8px 0 0">Merah = tarikh sasaran sudah lepas. Jika sudah dibuat, tandakan <b>Selesai</b> di tab ✏️ Edit → Checklist.</p>' : '';
+
+    return welcome + hero + kpis +
       '<div class="grid gm2" style="margin-top:12px">' +
       '<div class="card"><h2>🧾 Bayaran seterusnya <small>' + RM(sum(M.unpaid, function (x) { return x.amaun; })) + ' dalam jadual</small></h2><div class="list">' + next + '</div></div>' +
-      '<div class="card"><h2>✅ Tugasan seterusnya ' + (lewat ? '<span class="pill bad">' + lewat + ' lewat</span>' : '') + '</h2><div class="list">' + tasks + '</div></div>' +
+      '<div class="card"><h2>✅ Tugasan seterusnya ' + (lewat ? '<span class="pill bad">' + lewat + ' lewat</span>' : '') + '</h2><div class="list">' + tasks + '</div>' + lewatNote + '</div>' +
       '</div><div style="margin-top:12px">' + progress + '</div>';
   }
 
@@ -382,7 +409,7 @@
     var paid = M.bayaran.filter(function (x) { return x.paid; });
     var k = '<div class="grid g4">' +
       kpi('Belum bayar', RM(belum), M.unpaid.length + ' bayaran', 'gold') +
-      kpi('Perlu bayar ≤ 30 hari', RM(d30), 'termasuk yang lewat', d30 > 0 ? 'red' : 'sage') +
+      kpi('Perlu bayar dalam 30 hari', RM(d30), 'termasuk yang lewat', d30 > 0 ? 'red' : 'sage') +
       kpi('Bayaran lewat', String(lewat), lewat ? 'segera selesaikan' : 'tiada 👍', lewat ? 'red' : 'sage') +
       kpi('Sudah bayar', RM(sum(paid, function (x) { return x.amaun; })), paid.length + ' bayaran', 'sage') + '</div>';
     var list = M.bayaran.filter(function (x) { return F.bayar === 'semua' || (F.bayar === 'datang' ? !x.paid : x.paid); });
@@ -448,7 +475,7 @@
           (x.slot ? ' · ' + esc(x.slot) : '') + (x.masa ? ' · ' + esc(String(x.masa).slice(0, 16)) : '') + (x.ucapan ? '<br>“' + esc(x.ucapan) + '”' : '') + '</div></div>' +
           '<div class="r"><span class="pill ' + (x.hadir === 'Hadir' ? 'ok' : 'bad') + '">' + x.hadir + '</span></div></div>';
       }).join('') + '</div>' + (R.length > 12 ? '<p class="muted small">Senarai penuh di tab "RSVP Online" dalam Google Sheet.</p>' : '')
-        : '<p class="empty">Belum ada jawapan. Kongsi link jemputan anda: <b>' + esc(location.origin) + '/jemputan</b></p>') + '</div>';
+        : '<p class="empty">Belum ada jawapan. Kongsi link jemputan anda: <b>' + esc(SITE) + '/jemputan</b></p>') + '</div>';
     return k + rCard + '<div style="margin-top:12px">' + rsvp + '</div><div class="grid gm2" style="margin-top:12px">' + groupBars('pihak', 'Ikut pihak') + groupBars('kumpulan', 'Ikut kumpulan') + '</div>' +
       '<div class="card" style="margin-top:12px"><h2>Senarai tetamu <small>' + list.length + ' keluarga</small></h2>' +
       seg('tetamu', [['Belum Jawab', 'Belum jawab'], ['Hadir', 'Hadir'], ['Tidak Hadir', 'Tidak hadir'], ['Semua', 'Semua']], F.tetamu) +
@@ -513,7 +540,7 @@
     var tl = order.map(function (m) {
       var tgl = m === 'Akad Nikah' ? i.tarikhNikah : (m.indexOf('Resepsi') === 0 ? i.tarikhResepsi : '');
       return '<div class="card"><h2>' + esc(m) + (tgl ? ' <small>' + fmtD(tgl) + '</small>' : '') + '</h2><div class="tl">' + groups[m].map(function (x) {
-        return '<div class="tl-item"><div class="tl-time">' + esc(x.mula) + (x.tamat ? ' – ' + esc(x.tamat) : '') + '</div><div class="tl-what">' + esc(x.aturcara) + '</div>' +
+        return '<div class="tl-item"><div class="tl-time">' + esc(x.mula) + (x.tamat ? ' - ' + esc(x.tamat) : '') + '</div><div class="tl-what">' + esc(x.aturcara) + '</div>' +
           ((x.lokasi || x.pic) ? '<div class="tl-meta">' + [x.lokasi, x.pic ? 'PIC: ' + x.pic : ''].filter(Boolean).map(esc).join(' · ') + '</div>' : '') + '</div>';
       }).join('') + '</div></div>';
     }).join('') || '<div class="card">' + empty('Isi tab Tentatif Majlis dalam Google Sheet.') + '</div>';
@@ -527,8 +554,8 @@
     var k = '<div class="grid g4" style="margin-bottom:12px">' +
       kpi('Duit salam diterima', RM(s.jumlah), n(s.bil) + ' penyumbang', 'gold') +
       kpi('Belum ucap terima kasih', String(n(s.belumTerimaKasih)), 'penyumbang', n(s.belumTerimaKasih) ? 'rose' : 'sage') +
-      kpi('Akad nikah', i.tarikhNikah ? fmtDs(i.tarikhNikah) : '—', i.tarikhNikah ? fmtD(i.tarikhNikah) : 'isi di Google Sheet', 'rose') +
-      kpi('Resepsi', i.tarikhResepsi ? fmtDs(i.tarikhResepsi) : '—', esc(i.lokasi || ''), 'sage') + '</div>';
+      kpi('Akad nikah', i.tarikhNikah ? fmtDs(i.tarikhNikah) : '-', i.tarikhNikah ? fmtD(i.tarikhNikah) : 'isi di Google Sheet', 'rose') +
+      kpi('Resepsi', i.tarikhResepsi ? fmtDs(i.tarikhResepsi) : '-', esc(i.lokasi || ''), 'sage') + '</div>';
 
     return k + '<div class="grid gm2" style="align-items:start"><div class="stack">' + tl + '</div>' +
       '<div class="card"><h2>📋 AJK bertugas <small>' + cnt(M.ajk, function (x) { return x.nama; }) + ' / ' + M.ajk.length + '</small></h2><div class="list">' + ajk + '</div></div></div>';
@@ -688,9 +715,9 @@
   }
 
   // ---------------------------------------------------------------- edit (tulis ke Google Sheet)
-  var ED_TABLES = [['bajet', '💰 Bajet'], ['bayaran', '🧾 Bayaran'], ['tetamu', '👥 Tetamu'], ['checklist', '✅ Checklist'],
+  var ED_TABLES = [['maklumat', '💍 Maklumat Majlis'], ['bajet', '💰 Bajet'], ['bayaran', '🧾 Bayaran'], ['tetamu', '👥 Tetamu'], ['checklist', '✅ Checklist'],
     ['urusan', '📜 Urusan Nikah'], ['hantaran', '🎁 Hantaran'], ['vendor', '🤝 Vendor'], ['tentatif', '🕰️ Tentatif'], ['ajk', '📋 AJK'],
-    ['salam', '🧧 Duit Salam'], ['simpanan', '🏦 Simpanan'], ['rsvp', '💌 RSVP Online'], ['maklumat', '💍 Maklumat Majlis']];
+    ['salam', '🧧 Duit Salam'], ['simpanan', '🏦 Simpanan'], ['rsvp', '💌 RSVP Online']];
   var E = { t: 'bajet', cache: {}, at: {}, q: '', loading: false, err: '', cur: null };
   var ED_MSG = {
     WRONG_PIN: 'PIN telah berubah. Sila masukkan PIN semula.',
@@ -702,6 +729,11 @@
     BUSY: 'Google Sheet sedang sibuk. Cuba lagi sebentar.',
     NETWORK: 'Tiada sambungan internet. Cuba lagi.',
     SCRIPT_NOT_PUBLIC: 'Google Sheet tidak membalas. Cuba lagi sebentar.',
+    GOOGLE_BUSY: 'Google Sheet lambat membalas. Cuba lagi sebentar. Semak dalam Google Sheet sama ada perubahan sudah masuk sebelum cuba semula.',
+    READ_ERROR: 'Skrip tidak dapat membaca Google Sheet. Pastikan nama tab & tajuk kolum tidak diubah.',
+    INVALID: 'Permintaan tidak sah. Muat semula halaman dan cuba lagi.',
+    BAD_TABLE: 'Skrip dalam Google Sheet anda versi lama. Kemas kini skrip (rujuk panduan) untuk guna ciri Edit.',
+    PIN_NOT_SET: 'PIN belum ditetapkan dalam Google Sheet (tab Dashboard, sel C13).',
     NO_SHEET: 'Tab tidak dijumpai dalam Google Sheet: ',
     NO_COLUMN: 'Kolum tidak dijumpai dalam Google Sheet: ',
     KEY_REQUIRED: 'Sila isi: ',
@@ -716,7 +748,7 @@
   function editApi(body) {
     body.pin = PIN;
     return fetch('/api/edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return (r.headers.get('content-type') || '').indexOf('json') >= 0 ? r.json() : { ok: false, code: 'NETWORK' }; })
+      .then(function (r) { return (r.headers.get('content-type') || '').indexOf('json') >= 0 ? r.json() : { ok: false, code: 'GOOGLE_BUSY' }; })
       .catch(function () { return { ok: false, code: 'NETWORK' }; });
   }
   var toastT;
@@ -765,7 +797,7 @@
     } else if (d && d.single) {
       var r0 = d.rows[0] || { v: {} };
       body = '<div class="card"><h2>' + esc(d.label) + '</h2><div class="list">' + d.fields.map(function (f) {
-        return '<div class="row"><div class="main-col"><div class="s">' + esc(f.h) + '</div><div class="t">' + (esc(edFmt(f, r0.v[f.h])) || '—') + '</div></div></div>';
+        return '<div class="row"><div class="main-col"><div class="s">' + esc(f.h) + '</div><div class="t">' + (esc(edFmt(f, r0.v[f.h])) || '-') + '</div></div></div>';
       }).join('') + '</div><button type="button" class="btn primary" data-act="edit0" style="margin-top:12px">✏️ Edit maklumat majlis</button></div>';
     } else if (d) {
       var q = E.q.toLowerCase();
@@ -793,18 +825,18 @@
   function openForm(row) {
     var d = E.cache[E.t];
     if (!d) return;
-    E.cur = { r: row ? row.r : 0, k: row ? row.k : '', isNew: !row, orig: row ? row.v : {} };
+    E.cur = { r: row ? row.r : 0, k: row ? row.k : '', h: row ? row.h || '' : '', isNew: !row, orig: row ? row.v : {} };
     $('#editTitle').textContent = (row || d.single ? 'Edit · ' : 'Tambah · ') + d.label;
     var html = d.fields.map(function (f, i) {
       var v = row ? row.v[f.h] : '';
       if (v === null || v === undefined) v = '';
       var id = 'ef' + i, attr = ' id="' + id + '" data-h="' + esc(f.h) + '"';
-      if (f.lock) return '<div class="fld ro"><label>' + esc(f.h) + ' <small>(automatik)</small></label><div>' + (esc(edFmt(f, v)) || '—') + '</div></div>';
+      if (f.lock) return '<div class="fld ro"><label>' + esc(f.h) + ' <small>(automatik)</small></label><div>' + (esc(edFmt(f, v)) || '-') + '</div></div>';
       var input;
       if (f.type === 'list') {
         var opts = (f.options || []).slice();
         if (v !== '' && opts.indexOf(String(v)) < 0) opts.unshift(String(v));
-        input = '<select' + attr + '><option value="">—</option>' + opts.map(function (o) {
+        input = '<select' + attr + '><option value="">Pilih…</option>' + opts.map(function (o) {
           return '<option' + (String(o) === String(v) ? ' selected' : '') + '>' + esc(o) + '</option>';
         }).join('') + '</select>';
       } else if (f.type === 'num') {
@@ -820,7 +852,7 @@
       return '<div class="fld' + (f.h === d.key ? ' req' : '') + '"><label for="' + id + '">' + esc(f.h) + '</label>' + input + '</div>';
     }).join('');
     if (row) html += (d.ro || []).map(function (h) {
-      return '<div class="fld ro"><label>' + esc(h) + ' <small>(automatik)</small></label><div>' + (esc(row.v[h]) || '—') + '</div></div>';
+      return '<div class="fld ro"><label>' + esc(h) + ' <small>(automatik)</small></label><div>' + (esc(row.v[h]) || '-') + '</div></div>';
     }).join('');
     $('#editFields').innerHTML = html;
     $('#editErr').textContent = '';
@@ -833,7 +865,7 @@
   function edSave(op, f) {
     var btn = op === 'clear' ? $('#editDel') : $('#editSave'), label = btn.textContent;
     btn.disabled = true; btn.textContent = 'Menyimpan…'; $('#editErr').textContent = '';
-    editApi({ op: op, t: E.t, r: E.cur.r, k: E.cur.k, f: f }).then(function (res) {
+    editApi({ op: op, t: E.t, r: E.cur.r, k: E.cur.k, h: E.cur.h, f: f }).then(function (res) {
       btn.disabled = false; btn.textContent = label;
       if (res && res.ok && res.version) {
         $('#editDlg').close();
@@ -844,7 +876,7 @@
       if (res && res.ok) { $('#editErr').textContent = ED_MSG.OLD_SCRIPT; return; }
       if (res && res.code === 'WRONG_PIN') { $('#editDlg').close(); handle(res, false, true); return; }
       $('#editErr').textContent = edMsg(res);
-      if (res && res.code === 'CHANGED') loadEdit(true);
+      if (res && (res.code === 'CHANGED' || res.code === 'GOOGLE_BUSY')) loadEdit(true);
     });
   }
 
@@ -895,8 +927,10 @@
     e.preventDefault();
     var pin = $('#pin').value.trim();
     if (pin.length < 6) { $('#lockMsg').textContent = 'PIN sekurang-kurangnya 6 aksara.'; return; }
-    var btn = $('#lockBtn'); btn.disabled = true; btn.textContent = 'Menyemak… (5–10 saat)'; $('#lockMsg').textContent = '';
+    var btn = $('#lockBtn'); btn.disabled = true; btn.textContent = 'Menyemak… (5-10 saat)'; $('#lockMsg').textContent = '';
+    var slow = setTimeout(function () { if (btn.disabled) btn.textContent = 'Google agak lambat, sila tunggu…'; }, 12000);
     fetchData(pin).then(function (res) {
+      clearTimeout(slow);
       if (res.ok) { PIN = pin; store.del('pn_pin'); store.set('pn_pin', pin, $('#remember').checked); $('#pin').value = ''; }
       handle(res, true, false);
     });
@@ -911,11 +945,32 @@
   });
   $('#howBtn').addEventListener('click', function () { $('#help').showModal(); });
   $('#helpBtn').addEventListener('click', function () { $('#menu').close(); $('#help').showModal(); });
-  $('#inviteBtn').addEventListener('click', function () { $('#menu').close(); window.open('/jemputan', '_blank', 'noopener'); });
+  $('#guideBtn').addEventListener('click', function () { $('#menu').close(); $('#guide').showModal(); });
+  $('#inviteBtn').addEventListener('click', function () { $('#menu').close(); window.open(SITE + '/jemputan', '_blank', 'noopener'); });
+  // Kongsi jemputan: link umum atau link peribadi (?untuk=Nama), terus ke WhatsApp.
+  function shareLink() {
+    var nm = $('#shareName').value.trim().slice(0, 60);
+    return SITE + '/jemputan' + (nm ? '?untuk=' + encodeURIComponent(nm).replace(/%20/g, '+') : '');
+  }
+  function shareUpdate() { $('#shareLink').value = shareLink(); }
   $('#inviteCopy').addEventListener('click', function () {
-    var link = location.origin + '/jemputan';
-    $('#menu').close();
-    (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { alert('Link jemputan disalin: ' + link); }, function () { prompt('Salin link jemputan:', link); });
+    $('#menu').close(); $('#shareName').value = ''; shareUpdate(); $('#share').showModal();
+  });
+  $('#shareName').addEventListener('input', shareUpdate);
+  $('#shareCopy').addEventListener('click', function () {
+    var link = shareLink(), b = $('#shareCopy');
+    (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () {
+      b.textContent = '✓ Disalin'; setTimeout(function () { b.textContent = '📋 Salin link'; }, 1600);
+    }, function () { $('#shareLink').select(); document.execCommand('copy'); b.textContent = '✓ Disalin'; });
+  });
+  $('#shareWa').addEventListener('click', function () {
+    var i = (DATA && DATA.info) || {}, nm = $('#shareName').value.trim();
+    var pasangan = [i.perempuan, i.lelaki].filter(Boolean).join(' & ');
+    var msg = 'Assalamualaikum w.b.t. ' + (nm ? nm + ',\n\n' : '\n\n') +
+      'Dengan penuh kesyukuran, kami menjemput ' + (nm ? 'anda sekeluarga' : 'Tuan/Puan sekeluarga') + ' ke majlis perkahwinan' +
+      (pasangan ? ' ' + pasangan : ' kami') + '.' + (i.tarikhResepsi ? '\n📅 ' + fmtD(i.tarikhResepsi) + (i.lokasi ? '\n📍 ' + i.lokasi : '') : '') +
+      '\n\nJemputan, lokasi & RSVP:\n' + shareLink() + '\n\nMohon sahkan kehadiran melalui link di atas. Terima kasih 🤍';
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
   });
   var deferredInstall = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredInstall = e; });
@@ -923,11 +978,13 @@
     $('#menu').close();
     if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; } else $('#install').showModal();
   });
-  $('#logoutBtn').addEventListener('click', function () { store.del('pn_pin'); PIN = ''; DATA = null; E.cache = {}; $('#menu').close(); showLock('Dashboard dikunci.'); });
+  $('#logoutBtn').addEventListener('click', function () { store.del('pn_pin'); store.del('pn_data'); PIN = ''; DATA = null; E.cache = {}; $('#menu').close(); showLock('Dashboard dikunci.'); });
   $$('dialog').forEach(function (dlg) {
     dlg.addEventListener('click', function (e) { if (e.target === dlg || e.target.closest('[data-close]')) dlg.close(); });
   });
   $('#views').addEventListener('click', function (e) {
+    var g = e.target.closest('[data-go]');
+    if (g) { E.t = g.dataset.go; E.q = ''; go('edit'); return; }
     var b = e.target.closest('.seg button');
     if (!b) return;
     var s = b.parentNode.dataset.seg;
@@ -949,6 +1006,11 @@
   var h = (location.hash || '').replace('#', '');
   if (['utama', 'bajet', 'bayaran', 'tetamu', 'persiapan', 'harih', 'edit'].indexOf(h) >= 0) go(h);
   PIN = store.get('pn_pin') || '';
-  var hadPin = !!PIN;
-  fetchData(PIN).then(function (res) { handle(res, false, hadPin); });
+  var hadPin = !!PIN, cached = PIN ? loadCache() : null;
+  if (cached) {
+    // Buka terus dengan data terakhir, kemudian muat semula dari Google Sheet di belakang.
+    DATA = cached.data; MODE = 'live'; LAST = new Date(cached.t); RO = !!cached.ro; if (cached.site) SITE = cached.site; showApp();
+    $('#refreshBtn').classList.add('spin');
+  }
+  fetchData(PIN).then(function (res) { $('#refreshBtn').classList.remove('spin'); handle(res, false, hadPin); });
 })();

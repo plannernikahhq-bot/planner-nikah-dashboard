@@ -1,4 +1,4 @@
-/* Planner Nikah A–Z — Jemputan Digital & RSVP · Created by Hizami Radzi */
+/* Planner Nikah A–Z - Jemputan Digital & RSVP · Created by Hizami Radzi */
 (function () {
   'use strict';
 
@@ -217,7 +217,7 @@
       txt('#dDay', HARI[tgl.getDay()].toUpperCase()); txt('#dNum', tgl.getDate());
       txt('#dMonth', BULAN[tgl.getMonth()].toUpperCase()); txt('#dYear', tgl.getFullYear());
     }
-    txt('#dTime', [d.mula, d.tamat].filter(Boolean).join(' – '));
+    txt('#dTime', [d.mula, d.tamat].filter(Boolean).join(' - '));
     var target = tgl ? new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), mula ? mula.h : 11, mula ? mula.m : 0) : null;
     startCountdown(target);
     setupCalendar(tgl, mula, tamat, first);
@@ -294,7 +294,7 @@
     txt('#rsvpNote', r.buka ? ('Mohon sahkan kehadiran' + (tutup ? ' sebelum ' + tutup.getDate() + ' ' + BULAN[tutup.getMonth()] + ' ' + tutup.getFullYear() : '') + '.') : '');
     if (!r.buka) { show('#rsvpForm', false); show('#rsvpClosed', true); return; }
     var slots = r.slot || [];
-    var sel = $('#fSlot'); sel.innerHTML = '<option value="">— Pilih slot —</option>';
+    var sel = $('#fSlot'); sel.innerHTML = '<option value="">Pilih slot masa</option>';
     slots.forEach(function (x) { var o = document.createElement('option'); o.value = x; o.textContent = x; sel.appendChild(o); });
     show('#slotWrap', slots.length > 0);
     var done = null; try { done = JSON.parse(localStorage.getItem(DONE_KEY) || 'null'); } catch (e) {}
@@ -313,7 +313,10 @@
   }
   var ERR = {
     RSVP_CLOSED: 'Maaf, RSVP telah ditutup.', TOO_MANY: 'Terlalu banyak cubaan. Cuba lagi selepas 10 minit.', BUSY: 'Ramai sedang RSVP. Cuba lagi sebentar.',
-    INVALID_PAX: 'Bilangan tetamu melebihi had.', INVALID_SLOT: 'Sila pilih slot masa.', INVALID: 'Sila lengkapkan nama dan kehadiran.', FULL: 'Maaf, senarai RSVP telah penuh.'
+    INVALID_PAX: 'Bilangan tetamu melebihi had.', INVALID_SLOT: 'Sila pilih slot masa.', INVALID: 'Sila lengkapkan nama dan kehadiran.', FULL: 'Maaf, senarai RSVP telah penuh.',
+    READ_ONLY: 'Ini jemputan demo, jadi RSVP tidak disimpan. Dalam jemputan sebenar, jawapan terus masuk ke Google Sheet pengantin.',
+    GOOGLE_BUSY: 'Sambungan lambat. Jawapan anda mungkin sudah diterima. Tekan Hantar RSVP sekali lagi untuk pastikan (jawapan tidak akan berganda).',
+    NO_RSVP_TAB: 'RSVP belum disediakan oleh tuan rumah. Sila hubungi wakil keluarga.', NO_INVITE_TAB: 'RSVP belum disediakan oleh tuan rumah. Sila hubungi wakil keluarga.'
   };
   function submitRsvp(ev) {
     ev.preventDefault();
@@ -325,10 +328,14 @@
     if (ST.hadir === 'Hadir' && slots.length && !$('#fSlot').value) { err.textContent = 'Sila pilih slot masa.'; return; }
     var body = { nama: nama, tel: $('#fTel').value, hadir: ST.hadir, pax: ST.hadir === 'Hadir' ? ST.pax : 0, slot: $('#fSlot').value,
       ucapan: $('#fUcapan').value.trim(), laman: $('#fLaman').value, ms: Date.now() - ST.t };
+    // Id sama digunakan jika tetamu tekan Hantar semula untuk borang yang sama (elak jawapan berganda).
+    if (!ST.rid) ST.rid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    body.rid = ST.rid;
     var btn = $('#rsvpBtn'); btn.setAttribute('aria-disabled', 'true'); btn.textContent = 'Menghantar…';
     var finish = function (res) {
       btn.removeAttribute('aria-disabled'); btn.textContent = 'Hantar RSVP';
       if (res && res.ok) {
+        ST.rid = '';
         try { localStorage.setItem(DONE_KEY, JSON.stringify({ nama: nama, hadir: ST.hadir })); } catch (e) {}
         if (body.ucapan && D.rsvp.paparUcapan) { D.ucapan.unshift({ nama: nama, ucapan: body.ucapan }); renderWishes(); }
         showThanks(nama, ST.hadir, false);
@@ -339,7 +346,8 @@
     };
     if (DEMO) { setTimeout(function () { finish({ ok: true }); }, 700); return; }
     fetch('/api/rsvp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json(); }).then(finish).catch(function () { finish(null); });
+      .then(function (r) { return (r.headers.get('content-type') || '').indexOf('json') >= 0 ? r.json() : { ok: false, code: 'GOOGLE_BUSY' }; })
+      .then(finish).catch(function () { finish(null); });
   }
 
   var showAll = false;
@@ -349,7 +357,7 @@
     list.slice(0, showAll ? 40 : 6).forEach(function (w) {
       var c = document.createElement('div'); c.className = 'wish';
       var p = document.createElement('p'); p.textContent = '“' + w.ucapan + '”';
-      var b = document.createElement('b'); b.textContent = '— ' + w.nama;
+      var b = document.createElement('b'); b.textContent = '- ' + w.nama;
       c.appendChild(p); c.appendChild(b); box.appendChild(c);
     });
     show('#secUcapan', list.length > 0);
@@ -434,13 +442,20 @@
   }
 
   if (qs.get('demo') === '1' || location.protocol === 'file:') { boot(demoData(), true); return; }
+  // Jemputan contoh HANYA dipapar jika laman memang belum disambung (NOT_CONFIGURED).
+  // Gangguan sementara (Google lambat, internet putus) -> skrin "cuba lagi", supaya tetamu tidak nampak jemputan contoh.
+  var RETRY = ' <br><br><a href="" style="color:inherit;font-weight:600">Cuba lagi</a>';
   fetch('/api/jemputan', { headers: { Accept: 'application/json' } })
-    .then(function (r) { return (r.headers.get('content-type') || '').indexOf('json') >= 0 ? r.json() : { ok: false, code: 'NOT_CONFIGURED' }; })
+    .then(function (r) {
+      if ((r.headers.get('content-type') || '').indexOf('json') >= 0) return r.json();
+      return { ok: false, code: r.status === 404 ? 'NOT_CONFIGURED' : 'GOOGLE_BUSY' };
+    }, function () { return { ok: false, code: 'NETWORK' }; })
     .then(function (res) {
       if (res && res.ok && res.data) boot(res.data, false);
-      else if (!res || res.code === 'NOT_CONFIGURED') boot(demoData(), true);
-      else if (res.code === 'NO_INVITE_TAB') fail('Jemputan belum disediakan. (Pemilik: pastikan tab "Jemputan Digital" wujud dalam Google Sheet.)');
-      else fail('Jemputan tidak dapat dibuka sekarang. Sila cuba sebentar lagi.');
+      else if (res && res.code === 'NOT_CONFIGURED') boot(demoData(), true);
+      else if (res && res.code === 'NO_INVITE_TAB') fail('Jemputan belum disediakan. (Pemilik: pastikan tab "Jemputan Digital" wujud dalam Google Sheet.)');
+      else if (res && res.code === 'NETWORK') fail('Tiada sambungan internet. Semak sambungan anda.' + RETRY);
+      else fail('Jemputan sedang dimuatkan lambat. Sila cuba sebentar lagi.' + RETRY);
     })
-    .catch(function () { boot(demoData(), true); });
+    .catch(function () { fail('Jemputan tidak dapat dibuka sekarang.' + RETRY); });
 })();

@@ -21,7 +21,7 @@
   <img src="/icon-192.png" alt="" width="64" height="64">
   <div class="spinner" aria-hidden="true"></div>
   <p>Memuatkan data dari Google Sheet…</p>
-  <small>Kali pertama mungkin ambil 5–10 saat</small>
+  <small>Biasanya 5-10 saat · kadang-kadang Google ambil sehingga 30 saat</small>
 </section>
 
 <!-- ============ SKRIN PIN ============ -->
@@ -64,18 +64,18 @@
   <main class="main">
     <header class="top">
       <div class="couple">
-        <h1 id="coupleName">—</h1>
-        <p id="coupleMeta" class="muted">—</p>
+        <h1 id="coupleName">-</h1>
+        <p id="coupleMeta" class="muted">-</p>
       </div>
       <div class="top-actions">
-        <span id="status" class="status">—</span>
+        <span id="status" class="status">-</span>
         <button id="refreshBtn" class="icon-btn" title="Muat semula data" aria-label="Muat semula data">⟳</button>
         <button id="menuBtn" class="icon-btn" title="Tetapan" aria-label="Tetapan">⋯</button>
       </div>
     </header>
 
     <div id="demoBanner" class="banner" hidden>
-      <b>Mod Demo</b> — ini data contoh. Dashboard belum disambung ke Google Sheet anda.
+      <b>Mod Demo</b>: ini data contoh. Dashboard belum disambung ke Google Sheet anda.
       <button id="howBtn" class="link">Cara sambung →</button>
     </div>
     <div id="errBanner" class="banner err" hidden></div>
@@ -98,12 +98,44 @@
 <dialog id="menu" class="sheet">
   <div class="sheet-head"><b>Tetapan</b><button class="icon-btn" data-close aria-label="Tutup">✕</button></div>
   <div class="sheet-body">
+    <button class="menu-item" id="guideBtn">❓ Cara guna dashboard</button>
     <button class="menu-item" id="inviteBtn">💌 Buka jemputan digital</button>
-    <button class="menu-item" id="inviteCopy">🔗 Salin link jemputan (untuk WhatsApp)</button>
+    <button class="menu-item" id="inviteCopy">💬 Kongsi jemputan di WhatsApp</button>
     <button class="menu-item" id="installBtn">📲 Pasang di skrin utama</button>
     <button class="menu-item" id="helpBtn">📘 Cara sambung Google Sheet</button>
     <button class="menu-item danger" id="logoutBtn">🔒 Kunci & lupakan PIN pada peranti ini</button>
     <p class="muted small" id="versionInfo"></p>
+  </div>
+</dialog>
+
+<dialog id="share" class="sheet">
+  <div class="sheet-head"><b>Kongsi jemputan</b><button class="icon-btn" data-close aria-label="Tutup">✕</button></div>
+  <div class="sheet-body share">
+    <label for="shareName">Nama tetamu <span class="muted">(pilihan)</span></label>
+    <input id="shareName" type="text" maxlength="60" placeholder="cth. Keluarga Encik Ali" autocomplete="off">
+    <p class="muted small">Jika diisi, nama ini keluar di muka depan jemputan: <i>"Kepada Keluarga Encik Ali"</i>. Biarkan kosong untuk link umum (group WhatsApp).</p>
+    <label for="shareLink">Link jemputan</label>
+    <input id="shareLink" type="text" readonly>
+    <div class="share-btns">
+      <button type="button" class="btn primary" id="shareWa">💬 Hantar di WhatsApp</button>
+      <button type="button" class="btn ghost" id="shareCopy">📋 Salin link</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="guide" class="sheet">
+  <div class="sheet-head"><b>Cara guna dashboard</b><button class="icon-btn" data-close aria-label="Tutup">✕</button></div>
+  <div class="sheet-body help">
+    <ul>
+      <li><b>🏠 Utama:</b> kiraan hari, bajet, bayaran &amp; tugasan seterusnya.</li>
+      <li><b>💰 Bajet · 🧾 Bayaran · 👥 Tetamu · ✅ Persiapan · 💍 Hari H:</b> ringkasan setiap bahagian. Tekan kategori untuk lihat item.</li>
+      <li><b>✏️ Edit:</b> pilih bahagian → tekan rekod untuk ubah, atau <b>+ Tambah</b>. Disimpan terus ke Google Sheet anda.</li>
+      <li><b>⟳ (atas kanan):</b> muat semula data terbaru. Dashboard juga muat semula sendiri setiap 5 minit.</li>
+      <li><b>Merah</b> = lewat atau perlu perhatian. <b>Hijau</b> = selesai.</li>
+      <li><b>Kongsi dengan pasangan:</b> hantar link dashboard &amp; PIN secara berasingan.</li>
+      <li><b>Jemputan digital:</b> menu ⋯ → <b>💬 Kongsi jemputan</b> → taip nama tetamu (pilihan) → Hantar di WhatsApp.</li>
+    </ul>
+    <p class="muted small">Lupa PIN? Lihat tab <b>Dashboard</b>, sel <b>C13</b> dalam Google Sheet anda.</p>
   </div>
 </dialog>
 

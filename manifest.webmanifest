@@ -1,7 +1,7 @@
 {
   "name": "Dashboard Planner Nikah",
   "short_name": "Planner Nikah",
-  "description": "Dashboard majlis kahwin — Planner Nikah A–Z",
+  "description": "Dashboard majlis kahwin, Planner Nikah A–Z",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FBF7F5",

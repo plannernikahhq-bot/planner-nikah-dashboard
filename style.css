@@ -1,4 +1,4 @@
-/* Planner Nikah A–Z — Dashboard · Created by Hizami Radzi */
+/* Planner Nikah A–Z - Dashboard · Created by Hizami Radzi */
 :root{
   --bg:#FBF7F5; --card:#FFFFFF; --ink:#2F2A2B; --muted:#8A7F80; --line:#EEE4E1;
   --rose:#A8707B; --rose-d:#8A5560; --rose-l:#F7ECEE;
@@ -255,4 +255,14 @@ dialog.sheet::backdrop{background:rgba(30,20,22,.45)}
 .toast{position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px); background:#2F2A2B; color:#fff; padding:11px 18px; border-radius:99px; font-size:14px; font-weight:600; opacity:0; pointer-events:none; transition:.25s; z-index:50; max-width:calc(100% - 32px); text-align:center}
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 @media (min-width:900px){ .toast{bottom:28px} }
-
+/* kad sambutan pengguna baru */
+.welcome{border:2px solid var(--rose); margin-bottom:12px}
+.welcome p{margin:6px 0}
+.welcome ol{margin:6px 0 12px; padding-left:20px; line-height:1.55}
+.help ul{padding-left:18px; line-height:1.55}
+.help li{margin-bottom:6px}
+/* kongsi jemputan */
+.share label{display:block; font-weight:700; margin:10px 0 6px}
+.share input{width:100%; box-sizing:border-box; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font-size:16px}
+.share .small{margin:6px 0 4px}
+.share-btns{display:grid; gap:8px; margin-top:14px}
